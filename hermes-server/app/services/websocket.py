@@ -37,11 +37,12 @@ class ConnectionManager:
             return
         message = json.dumps({"event": event, "data": data})
         dead_connections = set()
-        for connection in self.active_connections[room_id]:
-            try:
-                await connection.send_text(message)
-            except Exception:
-                dead_connections.add(connection)
+        async with self._lock:
+            for connection in self.active_connections[room_id]:
+                try:
+                    await connection.send_text(message)
+                except Exception:
+                    dead_connections.add(connection)
         for dead in dead_connections:
             await self.disconnect(dead)
 
@@ -50,12 +51,13 @@ class ConnectionManager:
             return
         message = json.dumps({"event": event, "data": data})
         dead_connections = set()
-        for connection in self.active_connections[room_id]:
-            if connection != exclude:
-                try:
-                    await connection.send_text(message)
-                except Exception:
-                    dead_connections.add(connection)
+        async with self._lock:
+            for connection in self.active_connections[room_id]:
+                if connection != exclude:
+                    try:
+                        await connection.send_text(message)
+                    except Exception:
+                        dead_connections.add(connection)
         for dead in dead_connections:
             await self.disconnect(dead)
 

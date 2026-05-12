@@ -1,6 +1,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import get_db, AsyncSessionLocal
+from app.database import get_db, get_session_maker
 from app.core.security import decode_token
 from app.services.room import RoomService
 from app.services.message import MessageService
@@ -56,7 +56,7 @@ async def websocket_chat(
 
             if event == "message":
                 content = payload_data.get("content", "")
-                async with AsyncSessionLocal() as session:
+                async with get_session_maker()() as session:
                     message_service = MessageService(session)
                     msg = await message_service.create_message(
                         room_id=room_id,

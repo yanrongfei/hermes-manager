@@ -17,6 +17,9 @@ class RoomResponse(BaseModel):
     avatar: Optional[str]
     owner_id: str
     mode: str
+    trigger_tokens: int
+    max_history_tokens: int
+    tail_message_count: int
     invite_code: Optional[str]
     created_at: int
 
@@ -38,3 +41,7 @@ class MemberResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Rebuild model with forward references
+RoomDetail.model_rebuild()

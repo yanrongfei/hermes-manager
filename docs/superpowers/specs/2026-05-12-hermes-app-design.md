@@ -18,14 +18,36 @@
 
 ### 1.3 技术栈
 
-| 层级 | 技术 |
+#### 服务端
+
+| 层级 | 技术 | 说明 |
+|------|------|------|
+| 语言 | Python 3.11+ | - |
+| 框架 | FastAPI | 异步高性能、自动 OpenAPI |
+| ORM | SQLAlchemy 2.0 | 异步支持、类型提示完善 |
+| 数据库 | SQLite | 独立数据库，不共用 hermes-web-ui |
+| WebSocket | FastAPI 内置 | 原生 WebSocket |
+| 认证 | PyJWT | JWT Token |
+| 验证 | Pydantic v2 | 请求/响应验证 |
+| 部署 | Docker | 独立容器 |
+
+#### App 端
+
+| 层级 | 技术 | 说明 |
+|------|------|------|
+| 框架 | Flutter 3.x | Dart 语言 |
+| 状态管理 | Riverpod | 编译安全、测试方便 |
+| HTTP | dio | 拦截器、配置灵活 |
+| WebSocket | web_socket_channel | 官方维护 |
+| 路由 | go_router | Google 官方、深链接支持 |
+| 本地存储 | shared_preferences | 轻量 KV 存储 |
+| 部署 | Docker | 独立容器 |
+
+#### 参考技术栈
+
+| 项目 | 技术 |
 |------|------|
-| 前端 | Flutter (Dart) |
-| 后端 | Python FastAPI + 原生 WebSocket |
-| 认证 | 用户名+密码 + JWT Token |
-| 数据库 | SQLite（独立，不共用 hermes-web-ui） |
-| 部署 | Docker 独立容器 |
-| 参考 | hermes-web-ui (Vue 3 + Koa 2 + Socket.IO) |
+| hermes-web-ui | Vue 3 + TypeScript + Vite + Naive UI + Pinia + Koa 2 + Socket.IO |
 
 ---
 
@@ -68,18 +90,73 @@
 
 ### 2.2 后端架构
 
-- **FastAPI** — HTTP REST API + WebSocket Endpoint
-- **SQLAlchemy** — ORM for SQLite
-- **PyJWT** — JWT Token 认证
-- **websockets** — 原生 WebSocket（参考 hermes-web-ui 的 Socket.IO 事件格式）
-- **Docker** — 独立容器部署
+```
+hermes-server/
+├── app/
+│   ├── __init__.py
+│   ├── main.py              # FastAPI 入口
+│   ├── config.py            # 配置管理
+│   ├── database.py          # SQLAlchemy 连接
+│   ├── models/              # SQLAlchemy 模型
+│   │   ├── user.py
+│   │   ├── room.py
+│   │   ├── message.py
+│   │   ├── machine.py
+│   │   └── agent.py
+│   ├── schemas/             # Pydantic schemas
+│   │   ├── auth.py
+│   │   ├── room.py
+│   │   ├── message.py
+│   │   └── agent.py
+│   ├── api/                 # API 路由
+│   │   ├── auth.py
+│   │   ├── rooms.py
+│   │   ├── messages.py
+│   │   ├── machines.py
+│   │   └── agents.py
+│   ├── services/           # 业务逻辑
+│   │   ├── auth.py
+│   │   ├── room.py
+│   │   ├── message.py
+│   │   ├── websocket.py
+│   │   └── hermes_gateway.py
+│   └── core/               # 核心工具
+│       ├── security.py      # JWT 工具
+│       └── exceptions.py    # 自定义异常
+├── tests/
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+└── README.md
+```
 
 ### 2.3 前端架构
 
-- **Flutter** — 跨平台移动端
-- **Provider/Riverpod** — 状态管理
-- **dio** — HTTP 客户端
-- **web_socket_channel** — WebSocket 客户端
+```
+hermes-app/
+├── lib/
+│   ├── main.dart
+│   ├── app.dart
+│   ├── core/               # 核心配置、常量、工具
+│   │   ├── config/
+│   │   ├── constants/
+│   │   └── utils/
+│   ├── data/               # 数据层
+│   │   ├── models/         # 数据模型
+│   │   ├── repositories/   # 仓库模式
+│   │   └── providers/      # API/WebSocket 客户端
+│   ├── domain/             # 业务逻辑层
+│   │   ├── entities/
+│   │   └── usecases/
+│   ├── presentation/       # UI 层
+│   │   ├── screens/        # 页面
+│   │   ├── widgets/        # 组件
+│   │   └── providers/      # Riverpod providers
+│   └── router/             # go_router 配置
+├── ios/
+├── android/
+└── pubspec.yaml
+```
 
 ---
 

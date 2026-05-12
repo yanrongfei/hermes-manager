@@ -3,7 +3,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import init_db, get_engine
 from app.config import get_settings
+from app.api.auth import router as auth_router
 from app.api.rooms import router as rooms_router
+from app.api.machines import router as machines_router
+from app.api.agents import router as agents_router
 from app.api.ws import router as ws_router
 
 settings = get_settings()
@@ -26,7 +29,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(rooms_router)
+app.include_router(machines_router)
+app.include_router(agents_router)
 app.include_router(ws_router)
 
 @app.get("/health")

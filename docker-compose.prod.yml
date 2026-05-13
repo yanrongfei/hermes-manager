@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  hermes-server:
+    build:
+      context: ./hermes-server
+      dockerfile: Dockerfile
+    container_name: hermes-server
+    ports:
+      - "3002:8000"
+    volumes:
+      - /vol1/1000/nas1/docker/hermes-server:/app/data
+    environment:
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      - DEBUG=false
+      - DATABASE_URL=sqlite+aiosqlite:///./data/hermes.db
+    restart: unless-stopped

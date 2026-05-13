@@ -1,23 +1,22 @@
 pluginManagement {
-    val flutterSdkPath = System.getenv("FLUTTER_HOME")
-        ?: throw GradleException("FLUTTER_HOME environment variable is not set.")
+    val flutterSdkPath = System.getenv("FLUTTER_HOME") ?: throw GradleException("FLUTTER_HOME environment variable is not set.")
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
     repositories {
-        maven { 
+        maven {
             name = "aliyun-google"
-            url = uri("https://maven.aliyun.com/repository/google") 
+            url = uri("https://maven.aliyun.com/repository/google")
         }
-        maven { 
+        maven {
             name = "aliyun-public"
-            url = uri("https://maven.aliyun.com/repository/public") 
+            url = uri("https://maven.aliyun.com/repository/public")
         }
-        maven { 
+        maven {
             name = "aliyun-gradle-plugin"
-            url = uri("https://maven.aliyun.com/repository/gradle-plugin") 
+            url = uri("https://maven.aliyun.com/repository/gradle-plugin")
         }
-        maven { 
+        maven {
             name = "flutter-storage"
-            url = uri("https://storage.flutter-io.cn/download.flutter.io") 
+            url = uri("https://storage.flutter-io.cn/download.flutter.io")
         }
     }
 }

@@ -1,7 +1,8 @@
 # Hermes App 产品需求文档（PRD）
 
-> **文档版本：** v1.0
+> **文档版本：** v2.0
 > **编制日期：** 2026-05-12
+> **更新日期：** 2026-05-13
 > **状态：** 草稿
 > **密级：** 内部
 
@@ -17,11 +18,19 @@
 
 ### 1.2 产品定义
 
-**一句话定位：** 移动端的 AI Agent 协作平台，支持多用户群聊、多 Agent 调度和 Agent 配置管理。
+**一句话定位：** 移动端的 AI Agent 协作平台，支持多用户群聊、多 Agent 调度和远程 Gateway 管理。
 
-**核心价值：** 随时随地通过手机与 AI Agent 交互，灵活组建 Agent 协作群组，高效管理多台机器上的 Agent 资源。
+**核心价值：** 随时随地通过手机与 AI Agent 交互，灵活组建 Agent 协作群组，通过添加远程 Gateway 地址发现和使用 Agent 资源。
 
-### 1.3 目标用户
+### 1.3 术语澄清
+
+| 术语 | 定义 | 说明 |
+|------|------|------|
+| **Gateway** | 远程 AI Gateway 服务地址 | 对应 hermes-web-ui 中的 Machine/IP:Port，用户添加远程地址（如 192.168.1.100:8642）|
+| **Agent** | Gateway 上发现的 AI 实体 | Agent = Profile + Gateway 连接能力，用户无法在本机跑 Gateway 子进程 |
+| **Context Compression** | 上下文压缩 | 当对话 token 超过阈值时，自动压缩旧消息保留关键上下文 |
+
+### 1.4 目标用户
 
 | 用户类型 | 场景描述 |
 |---------|---------|
@@ -29,7 +38,7 @@
 | 技术团队 | 多人共用 Agent 资源，按需调用 |
 | AI 爱好者 | 体验多 Agent 群聊，探索 Agent 能力 |
 
-### 1.4 成功指标
+### 1.5 成功指标
 
 - 用户可在 3 分钟内完成注册并发起第一句对话
 - 群聊消息延迟 < 2 秒（WebSocket 推送）
@@ -115,12 +124,6 @@
 | 图片 | 支持 JPEG/PNG/GIF | 最大 10MB |
 | 语音 | 原声发送，可选自动转文字 | 最大 60 秒 |
 
-**语音消息**
-- 发送原声录音
-- 用户可在设置中开启"自动转文字"，发送时附上转写文本
-- 录音时显示实时波形
-- 播放时支持外放和耳机切换
-
 **消息推送**
 - WebSocket 持久连接，实时推送新消息
 - App 在后台时通过系统推送通知（参考 iOS APNs / Android FCM）
@@ -130,49 +133,105 @@
 - 展开"更多"显示：图片、拍照、文件
 - 快捷工具布局参考微信，但更简洁
 
-#### 2.2.4 多 Agent 模式
+#### 2.2.4 Agent 交互流程（核心）
 
-创建群时可选择 Agent 协作模式：
+**Agent 的来源**
+
+1. 用户在 App 添加远程 Gateway 地址（如 `192.168.1.100:8642`）
+2. App 从 Gateway 发现可用的 Agent（每个 Gateway 对应一个 Agent/Profile）
+3. 用户把 Agent 拉入群聊房间
+4. 之后通过 @mention 调用
+
+**消息路由模式**
 
 | 模式 | 说明 | 触发条件 |
 |------|------|---------|
-| 广播模式 | 用户发消息，所有 Agent 都能看到并回复 | 默认模式 |
+| 广播模式 | 用户发消息，所有 Agent 都收到并回复 | 默认模式 |
 | 指定模式 | 用户用 @mention 指定某个 Agent 回复 | 消息含 @AgentName |
-| 智能路由 | 系统自动判断该由哪个 Agent 处理 | 后续版本 |
+| 协作链 | Agent A 可以 @Agent B，形成协作链 | Agent 回复中 @其他Agent |
 
-**@Mention 路由**
-- 用户/Agent 在消息中 @某个 Agent，被 @者处理
-- Agent 也可以 @其他 Agent，形成协作链
-- 界面显示 @ 提及时自动高亮并跳转至对应 Agent 卡片
+**流式响应**
 
-#### 2.2.5 消息同步策略
+Agent 回复是逐字流式输出的，App 端需要像 ChatGPT 一样实时更新消息气泡：
 
-- 登录时同步最近 7 天的消息（按时间倒序）
-- 更早的消息上滑加载更多（每次加载20条）
-- 增量同步：记录本地最后一条消息的时间戳，跳过已同步消息
+| 阶段 | 后端行为 | 前端行为 |
+|------|---------|---------|
+| 1. 用户发消息 | 收到 WebSocket message 事件 | 显示消息 |
+| 2. 判断路由 | 广播或指定 | - |
+| 3. 调用 Gateway | HTTP POST /v1/responses (SSE) | 显示"Agent 思考中..." |
+| 4. 流式返回 | 分片推送 message.delta 事件 | **实时更新消息气泡** |
+| 5. 完成 | 推送 message.done | 显示完整回复 |
 
-#### 2.2.6 WebSocket 协议
+**消息队列**
+
+- Agent 正在回复时，用户再发消息应该排队等待
+- 前端显示"等待 Agent 空闲..."
+
+**Abort 支持**
+
+- 用户可以中断 Agent 的回复
+- 点击"停止"按钮发送 abort 事件
+- 后端收到 abort 事件后，停止从 Gateway 获取数据
+- 前端显示"已中止"
+
+#### 2.2.5 Tool Calls 和 Reasoning 展示
+
+**Tool Calls 展示**
+
+Agent 执行工具时的中间过程展示（如搜索、代码执行）：
+
+| 阶段 | 显示内容 |
+|------|---------|
+| 触发工具 | 显示工具名称（如 "Searching the web..."）|
+| 执行中 | 显示参数 JSON（可折叠）|
+| 执行完成 | 显示结果（可折叠）|
+
+**Thinking/Reasoning 展示**
+
+- Agent 的思考过程
+- 可折叠显示（类似 ChatGPT 的 think 折叠）
+- 节省 UI 空间
+
+#### 2.2.6 Context Compression（上下文压缩）
+
+**触发条件**
+- 当对话 token 累积超过 `triggerTokens`（默认 10 万）
+- 自动压缩旧消息
+
+**压缩效果**
+- 保留最近 N 条消息原文（`tailMessageCount`，默认 20）
+- 旧消息用 LLM 生成摘要
+- 压缩后的上下文传给 Agent，避免超出模型窗口
+
+**群聊场景尤为重要：** 多 Agent 来回对话时 token 增长很快。
+
+#### 2.2.7 WebSocket 协议
 
 **客户端发送事件**
 
 ```
-join        → 加入群聊 Room
-leave       → 离开群聊 Room
-message     → 发送消息
-mention     → @提及 Agent
-typing      → 正在输入
-stop_typing → 停止输入
+join           → 加入群聊 Room
+leave          → 离开群聊 Room
+message        → 发送消息
+mention        → @提及 Agent
+abort          → 中断 Agent 回复
+typing         → 正在输入
+stop_typing    → 停止输入
 ```
 
 **服务端推送事件**
 
 ```
 message           → 新消息
+message.delta     → 流式片段（逐字更新）
+message.done      → 流式结束
+message.error     → 流式出错
+context_status    → 'idle' | 'compressing' | 'replying'
+agent.thinking    → Agent 思考过程
+agent.tool_call   → Agent 工具调用
 member_joined     → 成员加入
 member_left       → 成员离开
 typing            → 成员正在输入
-context_status    → Agent 处理状态（compressing/replying/ready）
-message.processed → 消息已被 Agent 处理
 ```
 
 **连接管理**
@@ -180,25 +239,36 @@ message.processed → 消息已被 Agent 处理
 - 连接断开时自动重连（指数退避，最长30秒）
 - 心跳 ping/pong 间隔 30 秒
 
+#### 2.2.8 消息同步策略
+
+- 登录时同步最近 7 天的消息（按时间倒序）
+- 更早的消息上滑加载更多（每次加载20条）
+- 增量同步：记录本地最后一条消息的时间戳，跳过已同步消息
+
 ---
 
 ### 2.3 Tab2：发现
 
-#### 2.3.1 机器管理
+#### 2.3.1 Gateway 管理
 
 | 功能 | 描述 |
 |------|------|
-| 添加机器 | 输入机器地址（IP:Port），为其命名 |
-| 机器列表 | 显示已添加的机器，支持删除 |
+| 添加 Gateway | 输入远程地址（如 192.168.1.100:8642），为其命名 |
+| Gateway 列表 | 显示已添加的 Gateway，支持删除 |
 | 连接测试 | 保存前测试连通性，显示在线/离线状态 |
-| 加载 Agent | 从已连接的机器获取 Agent 列表 |
+| 发现 Agent | 从 Gateway 发现可用的 Agent 列表 |
+
+**Gateway 状态**
+- 在线（绿色）：Gateway 可达，正常响应
+- 离线（灰色）：Gateway 连接失败
+- 忙碌（橙色）：正在处理请求
 
 #### 2.3.2 Agent 管理
 
 | 功能 | 描述 |
 |------|------|
-| Agent 列表 | 展示所有可用 Agent（按机器分组） |
-| Agent 详情 | 名字、描述、头像、所属机器、在线状态 |
+| Agent 列表 | 展示所有可用 Agent（按 Gateway 分组） |
+| Agent 详情 | 名字、描述、头像、所属 Gateway、在线状态 |
 | 添加到群 | 从 Agent 列表选择，添加到指定群聊 |
 | 头像编辑 | 预设头像池 + 自定义图片 URL |
 
@@ -209,9 +279,8 @@ message.processed → 消息已被 Agent 处理
 
 #### 2.3.3 Skills 浏览器
 
-- 展示所有可用 Skills（从各机器加载）
+- 展示所有可用 Skills（从各 Gateway 加载）
 - 每个 Skill 显示：名称、描述、触发关键词
-- 点击可查看 Skill 详情（参数说明、使用示例）
 
 #### 2.3.4 Plugins 管理
 
@@ -219,31 +288,11 @@ message.processed → 消息已被 Agent 处理
 |------|------|
 | 插件列表 | 展示所有已安装 Plugins |
 | 启用/禁用 | 开关控制插件是否生效 |
-| 插件详情 | 名称、版本、描述、配置参数 |
 
 #### 2.3.5 Models 选择
 
-- 当前可用模型列表（从各机器加载）
+- 当前可用模型列表（从各 Gateway 加载）
 - 显示模型名称、上下文窗口、状态
-- 选择当前会话使用的模型
-
-#### 2.3.6 Jobs 定时任务
-
-| 功能 | 描述 |
-|------|------|
-| 任务列表 | 显示所有定时任务 |
-| 创建任务 | 选择目标 Agent、输入 prompt、设置 Cron 表达式 |
-| 编辑任务 | 修改任务参数 |
-| 启用/暂停 | 控制任务是否执行 |
-| 执行记录 | 查看最近执行结果（成功/失败/输出摘要） |
-
-#### 2.3.7 Kanban 看板
-
-- 默认看板视图（参考 Trello）
-- 列表：待办/进行中/已完成
-- 卡片：标题、描述、负责人、截止日期
-- 支持拖拽调整状态
-- 与 Hermes Agent 任务同步（Agent 可自动创建/更新卡片）
 
 ---
 
@@ -260,45 +309,42 @@ message.processed → 消息已被 Agent 处理
 | 清除缓存 | 清理本地消息缓存 |
 | 关于 | 版本号、用户协议、隐私政策 |
 
-#### 2.4.2 Logs 日志
-
-- 系统日志列表（按时间倒序）
-- 日志级别：DEBUG / INFO / WARNING / ERROR
-- 支持按级别筛选
-- 日志详情页：时间、级别、来源、内容
-
-#### 2.4.3 Usage 用量统计
+#### 2.4.2 Usage 用量统计
 
 | 指标 | 说明 |
 |------|------|
 | Token 使用 | 按模型分组显示 Token 消耗量 |
 | 对话次数 | 累计发起对话数 |
 | 成本估算 | 按模型单价估算费用（需配置单价） |
-| 趋势图 | 近7天/30天用量曲线 |
 
-#### 2.4.4 Gateway 网关管理
-
-- 展示已配置的 Hermes Gateway 列表
-- 添加/编辑/删除 Gateway
-- 显示每个 Gateway 的 Agent 数量和在线状态
-
-#### 2.4.5 Profiles 配置
+#### 2.4.3 Profiles 配置
 
 - 多 Profile 支持（如：开发环境 / 生产环境 / 个人）
 - 每个 Profile 包含：Gateway 地址、默认 Agent、主题偏好
 - 快速切换 Profile
 
-#### 2.4.6 Memory 记忆
+---
 
-- 展示 Agent 的持久化记忆摘要
-- 支持手动添加/编辑记忆条目
-- 记忆类型：事实（Facts）、偏好（Preferences）、上下文（Context）
+## 3. 不需要的功能（明确排除）
+
+以下 hermes-web-ui 功能在一期 **不实现**：
+
+| 功能 | 原因 |
+|------|------|
+| Terminal（终端） | 移动端不需要 |
+| Channels（Telegram/Discord 集成） | 移动端直接交互 |
+| Profiles 导入/导出 | 简化处理 |
+| WeChat/WeCom/Feishu 平台集成 | 不需要 |
+| Jobs 定时任务 | 后续版本考虑 |
+| Kanban 看板 | 后续版本考虑 |
+| Logs 日志 | 后续版本考虑 |
+| Memory 记忆 | 后续版本考虑 |
 
 ---
 
-## 3. 数据需求
+## 4. 数据需求
 
-### 3.1 数据库 Schema
+### 4.1 数据库 Schema
 
 #### users（用户表）
 
@@ -318,7 +364,7 @@ message.processed → 消息已被 Agent 处理
 | name | TEXT | 群名 |
 | avatar | TEXT | 头像 URL |
 | owner_id | TEXT FK | 群主用户 ID |
-| mode | TEXT | 协作模式：broadcast/mention/router/pipeline |
+| mode | TEXT | 协作模式：broadcast/mention |
 | trigger_tokens | INTEGER | 触发 Context 压缩的 Token 数，默认 100000 |
 | max_history_tokens | INTEGER | 压缩后最大 Token 数，默认 32000 |
 | tail_message_count | INTEGER | 保留最近消息条数，默认 20 |
@@ -346,18 +392,22 @@ message.processed → 消息已被 Agent 处理
 | sender_name | TEXT | 发送者显示名 |
 | content | TEXT | 消息内容 |
 | content_type | TEXT | text / image / voice |
-| extra | TEXT | JSON 扩展（图片 URL、语音转文字等） |
-| parent_id | TEXT | 父消息 ID（用于线程/流水线） |
+| extra | TEXT | JSON 扩展（图片 URL、语音转文字、tool_calls、thinking 等）|
+| parent_id | TEXT | 父消息 ID（用于线程/协作链）|
+| is_streaming | BOOLEAN | 是否正在流式输出 |
+| is_aborted | BOOLEAN | 是否被中止 |
 | created_at | INTEGER | 创建时间戳 |
 
-#### machines（机器配置）
+#### gateways（Gateway 配置）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | TEXT PK | UUID |
 | user_id | TEXT FK | 所属用户 ID |
-| name | TEXT | 机器名称 |
-| address | TEXT | 地址（IP:Port） |
+| name | TEXT | Gateway 名称 |
+| address | TEXT | 地址（IP:Port 或域名:Port）|
+| status | TEXT | online/offline |
+| last_seen | INTEGER | 最后在线时间戳 |
 | created_at | INTEGER | 添加时间戳 |
 
 #### agents（Agent 配置）
@@ -365,12 +415,13 @@ message.processed → 消息已被 Agent 处理
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | TEXT PK | UUID |
-| machine_id | TEXT FK | 所属机器 ID |
-| remote_id | TEXT | 在 Hermes Gateway 上的 ID |
+| gateway_id | TEXT FK | 所属 Gateway ID |
+| remote_id | TEXT | 在远程 Gateway 上的 ID |
 | name | TEXT | Agent 名称 |
 | description | TEXT | Agent 描述 |
 | avatar | TEXT | 头像 URL |
-| profile | TEXT | 关联 Profile |
+| profile | TEXT | JSON profile data |
+| status | TEXT | online/offline/busy |
 | invited | BOOLEAN | 是否已邀请入群 |
 | created_at | INTEGER | 创建时间戳 |
 
@@ -383,11 +434,23 @@ message.processed → 消息已被 Agent 处理
 | agent_id | TEXT FK | Agent ID |
 | joined_at | INTEGER | 加入时间戳 |
 
+#### message_summaries（压缩后的消息摘要）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | TEXT PK | UUID |
+| room_id | TEXT FK | 房间 ID |
+| start_message_id | TEXT | 摘要起始消息 ID |
+| end_message_id | TEXT | 摘要结束消息 ID |
+| summary | TEXT | LLM 生成的摘要 |
+| token_count | INTEGER | 压缩的 token 数 |
+| created_at | INTEGER | 创建时间戳 |
+
 ---
 
-## 4. API 需求
+## 5. API 需求
 
-### 4.1 认证接口
+### 5.1 认证接口
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
@@ -397,15 +460,15 @@ message.processed → 消息已被 Agent 处理
 | `/auth/logout` | POST | 登出 |
 | `/auth/me` | GET | 获取当前用户信息 |
 
-### 4.2 房间接口
+### 5.2 房间接口
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
 | `/rooms` | GET | 获取用户的房间列表 |
 | `/rooms` | POST | 创建房间 |
 | `/rooms/{id}` | GET | 获取房间详情 |
-| `/rooms/{id}` | PUT | 更新房间信息（仅群主/管理员） |
-| `/rooms/{id}` | DELETE | 删除房间（仅群主） |
+| `/rooms/{id}` | PUT | 更新房间信息（仅群主/管理员）|
+| `/rooms/{id}` | DELETE | 删除房间（仅群主）|
 | `/rooms/{id}/join` | POST | 通过邀请码加入 |
 | `/rooms/{id}/members` | GET | 获取成员列表 |
 | `/rooms/{id}/members/{user_id}` | DELETE | 移除成员 |
@@ -413,26 +476,26 @@ message.processed → 消息已被 Agent 处理
 | `/rooms/{id}/agents` | POST | 添加 Agent 到群 |
 | `/rooms/{id}/agents/{agent_id}` | DELETE | 从群移除 Agent |
 
-### 4.3 消息接口
+### 5.3 消息接口
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
-| `/rooms/{id}/messages` | GET | 获取消息历史（分页） |
-| `/rooms/{id}/messages` | POST | 发送消息（HTTP 备用） |
-| `/ws/chat` | WebSocket | 实时聊天 WebSocket |
+| `/rooms/{id}/messages` | GET | 获取消息历史（分页）|
+| `/rooms/{id}/messages` | POST | 发送消息（HTTP 备用）|
+| `/ws/chat` | WebSocket | 实时聊天 WebSocket（含流式）|
 
-### 4.4 机器与 Agent 接口
+### 5.4 Gateway 与 Agent 接口
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
-| `/machines` | GET | 获取机器列表 |
-| `/machines` | POST | 添加机器 |
-| `/machines/{id}` | DELETE | 删除机器 |
-| `/machines/{id}/agents` | GET | 从机器加载 Agent 列表 |
+| `/gateways` | GET | 获取 Gateway 列表 |
+| `/gateways` | POST | 添加 Gateway |
+| `/gateways/{id}` | DELETE | 删除 Gateway |
+| `/gateways/{id}/agents` | GET | 从 Gateway 发现 Agent 列表 |
 | `/agents` | GET | 获取所有 Agent |
 | `/agents/{id}` | GET | 获取 Agent 详情 |
 
-### 4.5 其他接口
+### 5.5 其他接口
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
@@ -440,17 +503,13 @@ message.processed → 消息已被 Agent 处理
 | `/plugins` | GET | 获取 Plugins 列表 |
 | `/plugins/{id}` | PUT | 更新插件状态 |
 | `/models` | GET | 获取可用模型列表 |
-| `/jobs` | GET | 获取定时任务列表 |
-| `/jobs` | POST | 创建定时任务 |
-| `/jobs/{id}` | PUT | 更新定时任务 |
-| `/jobs/{id}` | DELETE | 删除定时任务 |
 | `/usage` | GET | 获取用量统计 |
 
 ---
 
-## 5. 非功能需求
+## 6. 非功能需求
 
-### 5.1 性能需求
+### 6.1 性能需求
 
 | 指标 | 目标值 |
 |------|--------|
@@ -460,15 +519,15 @@ message.processed → 消息已被 Agent 处理
 | API 响应时间（P99） | < 2 秒 |
 | 图片压缩 | 最大 10MB，聊天中展示缩略图 |
 
-### 5.2 兼容性需求
+### 6.2 兼容性需求
 
 | 平台 | 最低版本 |
 |------|---------|
 | iOS | iOS 14.0 |
-| Android | Android 8.0（API 26） |
+| Android | Android 8.0（API 26）|
 | Flutter | 3.x |
 
-### 5.3 安全需求
+### 6.3 安全需求
 
 - 密码 bcrypt 加密存储
 - JWT Token 不存储明文（仅 Access Token 存于内存，Refresh Token 存于安全存储）
@@ -476,32 +535,29 @@ message.processed → 消息已被 Agent 处理
 - WebSocket 连接需携带有效 JWT
 - 邀请码 6 位随机（62^6 组合）
 
-### 5.4 日志与监控
-
-- Crash 日志上报（iOS Crashlytics / Android Firebase Crashlytics）
-- 性能监控（APM）
-- 关键事件埋点（注册、登录、创群、发消息）
-
 ---
 
-## 6. 附录
+## 7. 附录
 
-### 6.1 术语表
+### 7.1 术语表
 
 | 术语 | 定义 |
 |------|------|
-| Hermes Gateway | Hermes Agent 的网关服务，负责暴露 Agent 能力 |
+| Hermes Gateway | Hermes Agent 的远程网关服务，负责暴露 Agent 能力 |
 | Context Compression | 当对话历史超过阈值时，自动压缩旧消息保留关键上下文 |
 | Room | 群聊房间，对应一个对话上下文 |
-| Agent | 可被 @提及的 AI 助手实体 |
+| Agent | 可被 @提及的 AI 助手实体，来自远程 Gateway |
+| Tool Calls | Agent 执行工具时的中间过程展示 |
+| Reasoning/Thinking | Agent 的思考过程，可折叠显示 |
 
-### 6.2 参考竞品
+### 7.2 参考竞品
 
 - 微信（消息列表、群聊体验）
 - Slack/Discord（多频道、@mention）
 - Telegram（机器人、群组管理）
+- ChatGPT（流式输出、Thinking 折叠）
 
-### 6.3 后续版本规划（暂不定在本期）
+### 7.3 后续版本规划（暂不定在本期）
 
 - 智能路由模式
 - 流水线模式（Agent A → B → C 串行处理）
@@ -509,6 +565,10 @@ message.processed → 消息已被 Agent 处理
 - 视频消息
 - 消息已读状态
 - 群文件管理
+- Jobs 定时任务
+- Kanban 看板
+- Logs 日志
+- Memory 记忆
 
 ---
 

@@ -40,6 +40,8 @@ Mobile AI chat application with multi-user group chat and multi-agent collaborat
 ### Backend (Docker)
 
 ```bash
+cd hermes-server
+
 # Development
 docker compose up --build
 

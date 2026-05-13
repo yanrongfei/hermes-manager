@@ -3,7 +3,7 @@ version: '3.8'
 services:
   hermes-server:
     build:
-      context: ./hermes-server
+      context: .
       dockerfile: Dockerfile
     container_name: hermes-server
     ports:

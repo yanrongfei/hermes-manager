@@ -3,13 +3,13 @@ version: '3.8'
 services:
   hermes-server:
     build:
-      context: ./hermes-server
+      context: .
       dockerfile: Dockerfile.dev
     container_name: hermes-server-dev
     ports:
       - "8000:8000"
     volumes:
-      - ./hermes-server:/app
+      - .:/app
     environment:
       - DEBUG=true
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

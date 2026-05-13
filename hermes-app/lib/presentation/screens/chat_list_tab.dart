@@ -28,7 +28,7 @@ class ChatListTab extends ConsumerWidget {
             );
           }
           return RefreshIndicator(
-            onRefresh: () => ref.refresh(roomsProvider.future),
+            onRefresh: () => ref.read(roomsProvider.notifier).loadRooms(),
             child: ListView.builder(
               itemCount: rooms.length,
               itemBuilder: (context, index) {

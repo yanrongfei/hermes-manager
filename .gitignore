@@ -51,4 +51,4 @@ hermes.db
 
 # Environments
 .env
-.env.local
+.env.local.claude/

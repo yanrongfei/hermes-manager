@@ -46,6 +46,9 @@ htmlcov/
 *.db
 hermes.db
 
+# IDE
+.idea/
+
 # Environments
 .env
 .env.local

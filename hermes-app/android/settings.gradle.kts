@@ -1,5 +1,7 @@
 pluginManagement {
-    includeBuild("D:/tools/flutter/packages/flutter_tools/gradle")
+    val flutterSdkPath = System.getenv("FLUTTER_HOME")
+        ?: throw GradleException("FLUTTER_HOME environment variable is not set.")
+    includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
     repositories {
         maven { 
             name = "aliyun-google"

@@ -103,7 +103,7 @@ After starting the server, visit:
 
 ## Database
 
-SQLite database is stored at `/vol1/1000/nas1/docker/hermes-server/hermes.db` when running via Docker Compose with production configuration.
+SQLite database is stored in the mounted volume at `/app/data/hermes.db` when running via Docker Compose with production configuration.
 
 ## License
 

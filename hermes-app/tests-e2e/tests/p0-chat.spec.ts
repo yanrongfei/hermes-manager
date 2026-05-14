@@ -9,14 +9,14 @@ test.describe('P0 - 聊天功能', () => {
   });
 
   test('发送消息', async ({ page }) => {
-    await page.goto('/chat/1');
+    await page.goto('http://localhost:3030/#/chat/1');
     await chatPage.sendMessage('Hello, Hermes!');
     // Verify message appears in the list
     await expect(page.locator('text=Hello, Hermes!')).toBeVisible();
   });
 
   test('消息列表自动滚动', async ({ page }) => {
-    await page.goto('/chat/1');
+    await page.goto('http://localhost:3030/#/chat/1');
     // Send multiple messages
     for (let i = 1; i <= 5; i++) {
       await chatPage.sendMessage(`Message ${i}`);

@@ -10,7 +10,7 @@ test.describe('P0 - 导航测试', () => {
 
   test('Tab 切换', async ({ page }) => {
     // Assume already logged in at /home
-    await page.goto('/home');
+    await page.goto('http://localhost:3030/#/home');
     await homePage.expectTabsVisible();
 
     // Switch to discover tab

@@ -159,3 +159,35 @@ test.describe('P0 - 认证流程', () => {
   });
 });
 ```
+---
+
+## 六、执行记录
+
+### 2026-05-14 测试执行记录
+
+#### 环境信息
+- Flutter Web Build: ✓ 已构建 (`flutter build web`)
+- Web Server: 运行在 `localhost:3030`
+- Playwright Chromium: ✓ 已配置 (`/vol4/1000/nas4/tool/chrome-linux64/chrome`)
+- Browser: Chrome headless 可启动，页面标题显示 "Hermes App"
+
+#### 问题分析
+Flutter Web 应用在 headless Chromium 中使用 CanvasKit 渲染，DOM 中不包含传统 HTML input/button 元素，而是通过 Canvas 绘制 UI。Playwright 无法直接通过 CSS 选择器定位这些元素。
+
+**观察到的日志:**
+```
+[debug] Installing/Activating first service worker.
+[debug] Activated new service worker.
+[flt-renderer] canvaskit (requested explicitly)
+```
+
+#### 当前状态
+- ✅ P0 测试用例已编写完成 (`p0-auth.spec.ts`, `p0-navigation.spec.ts`, `p0-chat.spec.ts`)
+- ✅ P1/P2 测试用例骨架已创建
+- 🔄 测试框架搭建完成，但 Flutter Web 渲染特性导致元素定位失败
+- 📋 需要在真实浏览器环境或使用 Flutter Integration Test 执行
+
+#### 建议解决方案
+1. **Flutter Integration Test**: 在真实设备/模拟器上运行 `flutter test`
+2. **手动测试**: 在开发环境 `flutter run` 中验证
+3. **修改 UI 层**: 为关键元素添加 `Semantics` 标签供测试使用

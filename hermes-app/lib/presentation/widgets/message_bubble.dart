@@ -87,7 +87,7 @@ class MessageBubble extends StatelessWidget {
                 top: 2,
               ),
               child: Text(
-                '${message.inputTokens ?? 0} in / ${message.outputTokens ?? 0} out',
+                '输入 ${message.inputTokens ?? 0} / 输出 ${message.outputTokens ?? 0}',
                 style: TextStyle(fontSize: 11, color: Colors.grey[600]),
               ),
             ),
@@ -371,11 +371,11 @@ class _ToolCallCardState extends State<_ToolCallCard> {
                   const Divider(height: 1, color: Color(0xFF3A3A3A)),
                   const SizedBox(height: 8),
                   if (tc.arguments != null) ...[
-                    _JsonView(label: 'Arguments', data: tc.arguments!),
+                    _JsonView(label: '参数', data: tc.arguments!),
                     const SizedBox(height: 8),
                   ],
                   if (tc.output != null) ...[
-                    _JsonView(label: 'Result', data: tc.output!),
+                    _JsonView(label: '结果', data: tc.output!),
                   ],
                 ],
               ],

@@ -40,11 +40,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.chat_bubble, size: 64, color: Colors.blue),
+            Icon(Icons.chat_bubble, size: 64, color: Color(0xFF5856D6)),
             SizedBox(height: 16),
             Text(
               'Hermes',
-              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFFECECEC),
+              ),
             ),
           ],
         ),

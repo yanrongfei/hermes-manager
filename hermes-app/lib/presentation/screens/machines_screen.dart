@@ -273,7 +273,7 @@ class MachineDetailScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
           child: Text(
-            'Error: $e',
+            '错误: $e',
             style: TextStyle(color: Colors.grey[500]),
           ),
         ),

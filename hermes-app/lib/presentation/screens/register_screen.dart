@@ -43,7 +43,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final authState = ref.watch(authProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Register')),
+      appBar: AppBar(title: const Text('注册')),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -54,13 +54,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               children: [
                 TextFormField(
                   controller: _usernameController,
+                  style: const TextStyle(color: Color(0xFFECECEC)),
                   decoration: const InputDecoration(
-                    labelText: 'Username',
-                    border: OutlineInputBorder(),
+                    labelText: '用户名',
+                    prefixIcon: Icon(Icons.person_outline, color: Color(0xFFA0A0A0)),
                   ),
                   validator: (v) {
-                    if (v?.isEmpty == true) return 'Required';
-                    if (v!.length < 3) return 'Min 3 characters';
+                    if (v?.isEmpty == true) return '请输入用户名';
+                    if (v!.length < 3) return '至少 3 个字符';
                     return null;
                   },
                 ),
@@ -68,17 +69,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
+                  style: const TextStyle(color: Color(0xFFECECEC)),
                   decoration: InputDecoration(
-                    labelText: 'Password',
-                    border: const OutlineInputBorder(),
+                    labelText: '密码',
+                    prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFFA0A0A0)),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
+                      icon: Icon(
+                        _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                        color: const Color(0xFFA0A0A0),
+                      ),
                       onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
                   validator: (v) {
-                    if (v?.isEmpty == true) return 'Required';
-                    if (v!.length < 6) return 'Min 6 characters';
+                    if (v?.isEmpty == true) return '请输入密码';
+                    if (v!.length < 6) return '至少 6 个字符';
                     return null;
                   },
                 ),
@@ -86,12 +91,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 TextFormField(
                   controller: _confirmPasswordController,
                   obscureText: true,
+                  style: const TextStyle(color: Color(0xFFECECEC)),
                   decoration: const InputDecoration(
-                    labelText: 'Confirm Password',
-                    border: OutlineInputBorder(),
+                    labelText: '确认密码',
+                    prefixIcon: Icon(Icons.lock_outline, color: Color(0xFFA0A0A0)),
                   ),
                   validator: (v) {
-                    if (v != _passwordController.text) return 'Passwords do not match';
+                    if (v != _passwordController.text) return '两次密码不一致';
                     return null;
                   },
                 ),
@@ -100,7 +106,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   onPressed: authState.isLoading ? null : _register,
                   child: authState.isLoading
                       ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Register'),
+                      : const Text('注册', style: TextStyle(fontSize: 16)),
                 ),
                 if (authState.error != null) ...[
                   const SizedBox(height: 16),

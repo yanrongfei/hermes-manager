@@ -87,7 +87,7 @@ class ChatListTab extends ConsumerWidget {
             children: [
               Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
               const SizedBox(height: 12),
-              Text('Error: $e', style: TextStyle(color: Colors.grey[500])),
+              Text('错误: $e', style: TextStyle(color: Colors.grey[500])),
             ],
           ),
         ),

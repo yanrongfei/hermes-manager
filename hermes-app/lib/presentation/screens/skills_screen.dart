@@ -23,7 +23,7 @@ class SkillsScreen extends ConsumerWidget {
       backgroundColor: const Color(0xFF212121),
       appBar: AppBar(
         backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text('Skills', style: TextStyle(color: Color(0xFFECECEC))),
+        title: const Text('技能', style: TextStyle(color: Color(0xFFECECEC))),
         iconTheme: const IconThemeData(color: Color(0xFFECECEC)),
       ),
       body: skillsAsync.when(
@@ -50,7 +50,7 @@ class SkillsScreen extends ConsumerWidget {
                 itemCount: skills.length,
                 itemBuilder: (context, index) {
                   final skill = skills[index];
-                  final name = skill['name'] ?? skill['id'] ?? 'Unknown';
+                  final name = skill['name'] ?? skill['id'] ?? '未知';
                   final description = skill['description'] ?? '';
 
                   return Card(

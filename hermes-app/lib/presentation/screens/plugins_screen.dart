@@ -23,7 +23,7 @@ class PluginsScreen extends ConsumerWidget {
       backgroundColor: const Color(0xFF212121),
       appBar: AppBar(
         backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text('Plugins', style: TextStyle(color: Color(0xFFECECEC))),
+        title: const Text('插件', style: TextStyle(color: Color(0xFFECECEC))),
         iconTheme: const IconThemeData(color: Color(0xFFECECEC)),
       ),
       body: pluginsAsync.when(
@@ -45,7 +45,7 @@ class PluginsScreen extends ConsumerWidget {
                 itemCount: plugins.length,
                 itemBuilder: (context, index) {
                   final plugin = plugins[index];
-                  final name = plugin['name'] ?? plugin['id'] ?? 'Unknown';
+                  final name = plugin['name'] ?? plugin['id'] ?? '未知';
                   final enabled = plugin['enabled'] ?? true;
 
                   return Card(

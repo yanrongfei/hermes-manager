@@ -26,7 +26,7 @@ class ModelsScreen extends ConsumerWidget {
       backgroundColor: const Color(0xFF212121),
       appBar: AppBar(
         backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text('Models', style: TextStyle(color: Color(0xFFECECEC))),
+        title: const Text('模型', style: TextStyle(color: Color(0xFFECECEC))),
         iconTheme: const IconThemeData(color: Color(0xFFECECEC)),
       ),
       body: modelsAsync.when(
@@ -53,7 +53,7 @@ class ModelsScreen extends ConsumerWidget {
                 itemCount: models.length,
                 itemBuilder: (context, index) {
                   final model = models[index];
-                  final id = model['id'] ?? 'Unknown';
+                  final id = model['id'] ?? '未知';
                   final displayName = model['display_name'] ?? id;
                   final contextLength = model['context_length'] ?? model['context_window'];
 
@@ -71,7 +71,7 @@ class ModelsScreen extends ConsumerWidget {
                       ),
                       subtitle: Text(
                         contextLength != null
-                            ? 'Context: ${_formatContext(contextLength)}'
+                            ? '上下文: ${_formatContext(contextLength)}'
                             : id,
                         style: TextStyle(color: Colors.grey[500], fontSize: 12),
                       ),

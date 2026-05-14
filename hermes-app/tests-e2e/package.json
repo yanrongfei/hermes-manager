@@ -1,0 +1,14 @@
+{
+  "name": "hermes-app-e2e-tests",
+  "version": "1.0.0",
+  "description": "Playwright E2E tests for Hermes App",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
+  }
+}

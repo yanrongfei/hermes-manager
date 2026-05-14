@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from app.database import get_db
 from app.core.deps import get_current_user
+from app.core.errors import AppException, ErrorCode
 from app.schemas.machine import MachineCreate, MachineUpdate, MachineResponse
 from app.services.machine import MachineService
 
@@ -37,7 +38,7 @@ async def get_machine(
     service = MachineService(db)
     machine = await service.get_machine(machine_id, current_user.id)
     if not machine:
-        raise HTTPException(status_code=404, detail="Machine not found")
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在", status_code=404)
     return machine
 
 
@@ -51,7 +52,7 @@ async def update_machine(
     service = MachineService(db)
     machine = await service.update_machine(machine_id, current_user.id, data.name)
     if not machine:
-        raise HTTPException(status_code=404, detail="Machine not found")
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在", status_code=404)
     return machine
 
 
@@ -64,4 +65,4 @@ async def delete_machine(
     service = MachineService(db)
     success = await service.delete_machine(machine_id, current_user.id)
     if not success:
-        raise HTTPException(status_code=404, detail="Machine not found")
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在", status_code=404)

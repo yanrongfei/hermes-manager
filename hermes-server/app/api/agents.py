@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from app.database import get_db
 from app.core.deps import get_current_user
+from app.core.errors import AppException, ErrorCode
 from app.schemas.agent import AgentCreate, AgentUpdate, AgentResponse
 from app.services.agent import AgentService
 from app.services.room import RoomService
@@ -48,7 +49,7 @@ async def create_agent(
             invited=data.invited,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise AppException(ErrorCode.RESOURCE_BAD_REQUEST, str(e), status_code=400)
 
 
 @router.get("/agents/{agent_id}", response_model=AgentResponse)
@@ -60,7 +61,7 @@ async def get_agent(
     service = AgentService(db)
     agent = await service.get_agent(agent_id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "Agent 不存在", status_code=404)
     return agent
 
 
@@ -81,7 +82,7 @@ async def update_agent(
         profile=data.profile,
     )
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "Agent 不存在", status_code=404)
     return agent
 
 
@@ -94,7 +95,7 @@ async def delete_agent(
     service = AgentService(db)
     success = await service.delete_agent(agent_id, current_user.id)
     if not success:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "Agent 不存在", status_code=404)
 
 
 # ── Room Agent management ──────────────────────────────────────
@@ -107,7 +108,7 @@ async def list_room_agents(
 ):
     room_service = RoomService(db)
     if not await room_service.is_member(room_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a member")
+        raise AppException(ErrorCode.RESOURCE_FORBIDDEN, "你不是该聊天室的成员", status_code=403)
     service = AgentService(db)
     return await service.get_room_agents(room_id)
 
@@ -121,7 +122,7 @@ async def add_agent_to_room(
 ):
     room_service = RoomService(db)
     if not await room_service.is_member(room_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a member")
+        raise AppException(ErrorCode.RESOURCE_FORBIDDEN, "你不是该聊天室的成员", status_code=403)
     service = AgentService(db)
     return await service.add_agent_to_room(room_id, agent_id)
 
@@ -135,8 +136,8 @@ async def remove_agent_from_room(
 ):
     room_service = RoomService(db)
     if not await room_service.is_member(room_id, current_user.id):
-        raise HTTPException(status_code=403, detail="Not a member")
+        raise AppException(ErrorCode.RESOURCE_FORBIDDEN, "你不是该聊天室的成员", status_code=403)
     service = AgentService(db)
     success = await service.remove_agent_from_room(room_id, agent_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Agent not in room")
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "该 Agent 不在此聊天室中", status_code=404)

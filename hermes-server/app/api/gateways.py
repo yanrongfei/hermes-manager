@@ -8,12 +8,13 @@ This module provides:
 
 import httpx
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
 from app.core.deps import get_current_user
-from app.models.machine import Machine  # Reuse existing Machine table as Gateway store
+from app.core.errors import AppException, ErrorCode
+from app.models.machine import Machine
 from app.schemas.machine import MachineCreate, MachineUpdate, MachineResponse
 from app.services.gateway_client import GatewayClient
 from app.config import get_settings
@@ -29,7 +30,6 @@ async def list_gateways(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """List all gateways configured by the user."""
     result = await db.execute(
         select(Machine).where(Machine.user_id == current_user.id)
     )
@@ -43,17 +43,12 @@ async def create_gateway(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Add a new Gateway connection."""
-    # Verify connectivity
     gateway = GatewayClient(data.address)
     is_healthy = await gateway.health_check()
     await gateway.close()
 
     if not is_healthy:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Gateway at {data.address} is not reachable"
-        )
+        raise AppException(ErrorCode.GATEWAY_UNREACHABLE, f"网关 {data.address} 无法连接", status_code=400)
 
     machine = Machine(
         user_id=current_user.id,
@@ -72,10 +67,9 @@ async def get_gateway(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get a specific gateway."""
     machine = await _get_user_gateway(db, gateway_id, current_user.id)
     if not machine:
-        raise HTTPException(status_code=404, detail="Gateway not found")
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
     return _machine_to_response(machine)
 
 
@@ -85,10 +79,9 @@ async def delete_gateway(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete a gateway."""
     machine = await _get_user_gateway(db, gateway_id, current_user.id)
     if not machine:
-        raise HTTPException(status_code=404, detail="Gateway not found")
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
     await db.delete(machine)
     await db.commit()
 
@@ -99,10 +92,9 @@ async def test_gateway(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Test connectivity to a gateway."""
     machine = await _get_user_gateway(db, gateway_id, current_user.id)
     if not machine:
-        raise HTTPException(status_code=404, detail="Gateway not found")
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
 
     gateway = GatewayClient(machine.address)
     is_healthy = await gateway.health_check()
@@ -117,10 +109,9 @@ async def discover_agents(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Discover available agents/profiles from a gateway."""
     machine = await _get_user_gateway(db, gateway_id, current_user.id)
     if not machine:
-        raise HTTPException(status_code=404, detail="Gateway not found")
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
 
     gateway = GatewayClient(machine.address)
     try:
@@ -140,28 +131,17 @@ async def proxy_to_gateway(
     db: AsyncSession = Depends(get_db),
     gateway_id: Optional[str] = Query(None),
 ):
-    """
-    Proxy requests to Hermes Gateway.
-
-    If gateway_id is provided, use that specific gateway.
-    Otherwise, use the first available gateway for the user.
-    """
     if gateway_id:
         machine = await _get_user_gateway(db, gateway_id, current_user.id)
         if not machine:
-            raise HTTPException(status_code=404, detail="Gateway not found")
+            raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
         gateway_url = machine.address
     else:
-        # Use default
         gateway_url = settings.DEFAULT_GATEWAY_URL
 
-    # Build upstream URL
     upstream_url = f"{gateway_url}/{path}"
-
-    # Read request body
     body = await request.body()
 
-    # Forward headers (except host)
     headers = {}
     for key, value in request.headers.items():
         if key.lower() not in ("host", "content-length"):

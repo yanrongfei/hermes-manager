@@ -43,21 +43,38 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final authState = ref.watch(authProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('注册')),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const SizedBox(height: 80),
+                const Icon(
+                  Icons.chat_bubble,
+                  size: 64,
+                  color: Color(0xFF5856D6),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '创建账号',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFECECEC),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 48),
                 TextFormField(
                   controller: _usernameController,
                   style: const TextStyle(color: Color(0xFFECECEC)),
                   decoration: const InputDecoration(
                     labelText: '用户名',
                     prefixIcon: Icon(Icons.person_outline, color: Color(0xFFA0A0A0)),
+                    contentPadding: EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                   ),
                   validator: (v) {
                     if (v?.isEmpty == true) return '请输入用户名';
@@ -80,6 +97,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       ),
                       onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                     ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                   ),
                   validator: (v) {
                     if (v?.isEmpty == true) return '请输入密码';
@@ -95,18 +113,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   decoration: const InputDecoration(
                     labelText: '确认密码',
                     prefixIcon: Icon(Icons.lock_outline, color: Color(0xFFA0A0A0)),
+                    contentPadding: EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                   ),
                   validator: (v) {
                     if (v != _passwordController.text) return '两次密码不一致';
                     return null;
                   },
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
                 ElevatedButton(
                   onPressed: authState.isLoading ? null : _register,
                   child: authState.isLoading
                       ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Text('注册', style: TextStyle(fontSize: 16)),
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () => context.go('/login'),
+                  child: const Text(
+                    '已有账号？去登录',
+                    style: TextStyle(color: Color(0xFFA0A0A0)),
+                  ),
                 ),
                 if (authState.error != null) ...[
                   const SizedBox(height: 16),

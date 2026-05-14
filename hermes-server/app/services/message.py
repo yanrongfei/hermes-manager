@@ -1,8 +1,9 @@
 from typing import List, Optional
-from sqlalchemy import select, and_, desc
+from sqlalchemy import select, and_, desc, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.message import Message
 from app.services.room import RoomService
+
 
 class MessageService:
     def __init__(self, db: AsyncSession):
@@ -18,7 +19,9 @@ class MessageService:
         content: str,
         content_type: str = "text",
         extra: Optional[str] = None,
-        parent_id: Optional[str] = None
+        parent_id: Optional[str] = None,
+        is_streaming: bool = False,
+        is_aborted: bool = False,
     ) -> Message:
         message = Message(
             room_id=room_id,
@@ -28,9 +31,38 @@ class MessageService:
             content=content,
             content_type=content_type,
             extra=extra,
-            parent_id=parent_id
+            parent_id=parent_id,
+            is_streaming=is_streaming,
+            is_aborted=is_aborted,
         )
         self.db.add(message)
+        await self.db.commit()
+        await self.db.refresh(message)
+        return message
+
+    async def update_message(
+        self,
+        message_id: str,
+        content: Optional[str] = None,
+        extra: Optional[str] = None,
+        is_streaming: Optional[bool] = None,
+        is_aborted: Optional[bool] = None,
+    ) -> Optional[Message]:
+        """Update an existing message (e.g., after streaming completes)."""
+        result = await self.db.execute(
+            select(Message).where(Message.id == message_id)
+        )
+        message = result.scalar_one_or_none()
+        if not message:
+            return None
+        if content is not None:
+            message.content = content
+        if extra is not None:
+            message.extra = extra
+        if is_streaming is not None:
+            message.is_streaming = is_streaming
+        if is_aborted is not None:
+            message.is_aborted = is_aborted
         await self.db.commit()
         await self.db.refresh(message)
         return message

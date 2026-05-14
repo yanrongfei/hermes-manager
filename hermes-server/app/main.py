@@ -6,6 +6,7 @@ from app.config import get_settings
 from app.api.auth import router as auth_router
 from app.api.rooms import router as rooms_router
 from app.api.machines import router as machines_router
+from app.api.gateways import router as gateways_router
 from app.api.agents import router as agents_router
 from app.api.ws import router as ws_router
 
@@ -32,6 +33,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(rooms_router)
 app.include_router(machines_router)
+app.include_router(gateways_router)
 app.include_router(agents_router)
 app.include_router(ws_router)
 

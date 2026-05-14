@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
+
 class Settings(BaseSettings):
     APP_NAME: str = "Hermes App"
     DEBUG: bool = True
@@ -14,7 +15,13 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./hermes.db"
 
+    # Gateway (default fallback when no user gateway is configured)
+    DEFAULT_GATEWAY_URL: str = "http://localhost:8642"
+    DEFAULT_GATEWAY_API_KEY: str = ""
+    DEFAULT_MODEL: str = "claude-sonnet-4-20250514"
+
     model_config = SettingsConfigDict(env_file=".env")
+
 
 @lru_cache()
 def get_settings() -> Settings:

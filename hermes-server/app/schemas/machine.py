@@ -3,7 +3,7 @@ from typing import Optional
 
 class MachineCreate(BaseModel):
     name: Optional[str] = None
-    address: str = Field(..., pattern=r"^\d+\.\d+\.\d+\.\d+:\d+$")
+    address: str = Field(..., description="Gateway address: IP:Port or hostname:Port")
 
 class MachineUpdate(BaseModel):
     name: Optional[str] = None

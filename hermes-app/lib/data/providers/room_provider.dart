@@ -28,6 +28,12 @@ class RoomsNotifier extends StateNotifier<AsyncValue<List<Room>>> {
     await dio.post('/rooms', data: {'name': name, 'mode': mode});
     await loadRooms();
   }
+
+  Future<void> joinByCode(String inviteCode) async {
+    final dio = _ref.read(dioProvider);
+    await dio.post('/rooms/join', data: {'invite_code': inviteCode});
+    await loadRooms();
+  }
 }
 
 final roomsProvider = StateNotifierProvider<RoomsNotifier, AsyncValue<List<Room>>>((ref) {

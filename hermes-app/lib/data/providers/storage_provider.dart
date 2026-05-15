@@ -1,27 +1,24 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class StorageService {
-  final FlutterSecureStorage _secure;
+  final SharedPreferences _prefs;
 
-  StorageService(this._secure);
+  StorageService(this._prefs);
 
-  Future<String?> get(String key) async => _secure.read(key: key);
+  Future<String?> get(String key) async => _prefs.getString(key);
   Future<bool> set(String key, String value) async {
-    await _secure.write(key: key, value: value);
+    await _prefs.setString(key, value);
     return true;
   }
   Future<bool> remove(String key) async {
-    await _secure.delete(key: key);
+    await _prefs.remove(key);
     return true;
   }
 }
 
-final sharedPreferencesProvider = Provider<FlutterSecureStorage>((ref) {
-  return const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
-  );
+final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
+  throw UnimplementedError('SharedPreferences must be initialized before use');
 });
 
 final storageProvider = Provider<StorageService>((ref) {

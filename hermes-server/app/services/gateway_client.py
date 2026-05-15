@@ -7,9 +7,16 @@ class GatewayClient:
     """Client for communicating with Hermes Gateway."""
 
     def __init__(self, gateway_url: str, api_key: Optional[str] = None):
+        # Normalize URL: fix common typos like "127.0.0.1::8642" -> "127.0.0.1:8642"
+        # and add http:// scheme if missing
+        url = gateway_url.strip()
+        url = url.replace("::", ":")  # fix double-colon typo
+        if "://" not in url:
+            url = "http://" + url
+        url = url.rstrip("/")
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self.client = httpx.AsyncClient(
-            base_url=gateway_url,
+            base_url=url,
             headers=headers,
             timeout=180.0
         )

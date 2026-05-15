@@ -138,6 +138,7 @@ class _MachinesScreenState extends ConsumerState<MachinesScreen> {
   void _showAddGatewayDialog(BuildContext context, WidgetRef ref) {
     final addressController = TextEditingController();
     final nameController = TextEditingController();
+    final apiKeyController = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
     showModalBottomSheet(
@@ -201,6 +202,23 @@ class _MachinesScreenState extends ConsumerState<MachinesScreen> {
                   return null;
                 },
               ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: apiKeyController,
+                style: const TextStyle(color: Color(0xFFECECEC)),
+                decoration: InputDecoration(
+                  labelText: 'API Key（可选）',
+                  hintText: '网关认证密钥',
+                  hintStyle: TextStyle(color: Colors.grey[700]),
+                  labelStyle: TextStyle(color: Colors.grey[500]),
+                  filled: true,
+                  fillColor: const Color(0xFF343541),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -214,11 +232,13 @@ class _MachinesScreenState extends ConsumerState<MachinesScreen> {
                   ),
                   onPressed: () async {
                     if (formKey.currentState!.validate()) {
+                      final apiKey = apiKeyController.text.trim();
                       await ref.read(machinesNotifierProvider.notifier).addMachine(
                         addressController.text.trim(),
                         name: nameController.text.isNotEmpty
                             ? nameController.text.trim()
                             : null,
+                        apiKey: apiKey.isNotEmpty ? apiKey : null,
                       );
                       if (context.mounted) Navigator.pop(context);
                     }

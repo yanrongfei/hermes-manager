@@ -45,6 +45,14 @@ class MachineService:
         machine = await self.get_machine(machine_id, user_id)
         if not machine:
             return False
+        # Delete associated agents first
+        from app.models.agent import Agent
+        result = await self.db.execute(
+            select(Agent).where(Agent.machine_id == machine_id)
+        )
+        agents = result.scalars().all()
+        for agent in agents:
+            await self.db.delete(agent)
         await self.db.delete(machine)
         await self.db.commit()
         return True

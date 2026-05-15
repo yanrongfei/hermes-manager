@@ -66,8 +66,8 @@ class GatewayChannel:
             if agents:
                 self._active_mode = "http"
                 return agents
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[GatewayChannel] HTTP list_agents failed: {e}")
 
         # For local mode, try bridge then config
         if self.machine.mode == "local":

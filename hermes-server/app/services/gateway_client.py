@@ -35,15 +35,19 @@ class GatewayClient:
 
     async def list_agents(self) -> List[dict]:
         """List available agents/profiles from Gateway.
-        
+
         Gateway does not implement /v1/profiles (returns 404).
         We use /v1/models which returns the current profile as a model entry.
         """
         try:
             resp = await self.client.get("/v1/models")
+            if resp.status_code != 200:
+                error = resp.json().get("error", {}) if resp.headers.get("content-type", "").startswith("application/json") else {}
+                msg = error.get("message", resp.text[:200]) if isinstance(error, dict) else str(error)
+                print(f"[GatewayClient] /v1/models returned {resp.status_code}: {msg}")
+                return []
             data = resp.json()
             models = data.get("data", []) if isinstance(data, dict) else []
-            # Transform model entries to agent-like dicts for the frontend
             return [
                 {
                     "id": m.get("id", ""),
@@ -53,7 +57,8 @@ class GatewayClient:
                 }
                 for m in models
             ]
-        except Exception:
+        except Exception as e:
+            print(f"[GatewayClient] list_agents error: {e}")
             return []
 
     async def stream_response(

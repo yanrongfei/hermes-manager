@@ -91,6 +91,17 @@ async def create_gateway(
 ):
     gateway = GatewayClient(data.address, api_key=data.api_key)
     is_healthy = await gateway.health_check()
+
+    if is_healthy and data.api_key:
+        # Verify the API key actually works by checking /v1/models
+        try:
+            models = await gateway.list_agents()
+            if not models:
+                # /v1/models returned empty — key might be wrong
+                print(f"[Gateway] {data.address} health OK but /v1/models returned empty, key may be invalid")
+        except Exception:
+            pass
+
     await gateway.close()
 
     # Local mode doesn't require HTTP health check

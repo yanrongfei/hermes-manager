@@ -119,7 +119,10 @@ def _scan_profile(profile_home: Path, profile_name: str, home: Path) -> dict[str
         if home_gw["running"] and not gw_info["running"]:
             gw_info = home_gw
 
-    address = f"http://{gateway_addr['host']}:{gateway_addr['port']}"
+    host = gateway_addr["host"]
+    if host in ("0.0.0.0", "::", ""):
+        host = "127.0.0.1"
+    address = f"http://{host}:{gateway_addr['port']}"
     mode = "http" if gw_info["api_server_connected"] else "local"
     online = gw_info["running"]
 

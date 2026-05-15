@@ -55,11 +55,18 @@ async def discover_gateways(
     # HTTP gateway discovery
     http_gateways = await scan_local_gateways(exclude_addresses=existing_addresses)
 
+    # Track addresses already found by HTTP scan to avoid duplicates
+    seen_addresses = {g["address"] for g in http_gateways}
+
     # Local profile discovery
     local_profiles = scan_local_profiles()
     local_results = []
     for p in local_profiles:
         if p["profile_name"] not in existing_profiles:
+            # Skip if HTTP scan already found this address
+            if p["address"] in seen_addresses:
+                continue
+            seen_addresses.add(p["address"])
             local_results.append({
                 "profile_name": p["profile_name"],
                 "name": p.get("name", p["profile_name"]),

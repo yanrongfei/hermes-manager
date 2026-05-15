@@ -11,7 +11,6 @@ def _get_local_ips() -> list[str]:
     """Get all local IP addresses (excluding loopback)."""
     ips = []
     try:
-        # Get IPs from network interfaces via UDP trick
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         local_ip = s.getsockname()[0]
@@ -19,7 +18,6 @@ def _get_local_ips() -> list[str]:
         ips.append(local_ip)
     except Exception:
         pass
-    # Also try hostname resolution for LAN IP
     try:
         hostname = socket.gethostname()
         resolved = socket.gethostbyname(hostname)
@@ -32,7 +30,7 @@ def _get_local_ips() -> list[str]:
 
 def _expand_scan_hosts() -> list[str]:
     """Build the list of hosts to scan, including LAN IPs."""
-    hosts = ["localhost", "127.0.0.1"]
+    hosts = ["localhost", "127.0.0.1", "0.0.0.0"]
     for ip in _get_local_ips():
         if ip not in hosts:
             hosts.append(ip)
@@ -57,9 +55,18 @@ async def _probe(host: str, port: int) -> dict | None:
     return None
 
 
-def _is_lan_ip(host: str) -> bool:
-    """True if host looks like a LAN IP (not localhost/loopback)."""
-    return host not in ("localhost", "127.0.0.1", "127.0.1.1")
+def _normalize_host(host: str) -> str:
+    """Normalize wildcard/loopback addresses to 127.0.0.1."""
+    if host in ("0.0.0.0", "::", ""):
+        return "127.0.0.1"
+    if host == "localhost":
+        return "127.0.0.1"
+    return host
+
+
+def _is_real_lan_ip(host: str) -> bool:
+    """True if host is a real LAN IP (not loopback/wildcard)."""
+    return host not in ("localhost", "127.0.0.1", "127.0.1.1", "0.0.0.0", "::", "")
 
 
 async def scan_local_gateways(exclude_addresses: Set[str] | None = None) -> List[dict]:
@@ -74,20 +81,23 @@ async def scan_local_gateways(exclude_addresses: Set[str] | None = None) -> List
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    gateways = []
-    seen_ports: set[int] = set()
+    # Group by port, keep only one entry per port preferring LAN IP
+    by_port: dict[int, list[dict]] = {}
     for r in results:
         if isinstance(r, dict) and r.get("online"):
             url = r["address"]
-            # url format: http://host:port
-            host = url.split("//")[1].split(":")[0]
             port = int(url.split(":")[-1])
-            is_lan = _is_lan_ip(host)
-            if port not in seen_ports:
-                # First time seeing this port — always add
-                seen_ports.add(port)
-                gateways.append(r)
-            elif is_lan:
-                # Same port found from LAN IP — replace the loopback entry
-                gateways = [g if int(g["address"].split(":")[-1]) != port else r for g in gateways]
+            by_port.setdefault(port, []).append(r)
+
+    gateways = []
+    for port, entries in by_port.items():
+        # Prefer real LAN IP, fallback to first entry
+        lan = [e for e in entries if _is_real_lan_ip(e["address"].split("//")[1].split(":")[0])]
+        chosen = lan[0] if lan else entries[0]
+        # Normalize the address
+        host = chosen["address"].split("//")[1].split(":")[0]
+        norm = _normalize_host(host)
+        chosen["address"] = f"http://{norm}:{port}"
+        gateways.append(chosen)
+
     return gateways

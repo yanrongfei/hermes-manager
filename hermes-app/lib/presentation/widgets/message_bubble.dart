@@ -101,7 +101,7 @@ class MessageBubble extends StatelessWidget {
                 right: isUser ? 48 : 0,
                 top: 2,
               ),
-              child: Text(
+              child: SelectableText(
                 message.isAborted == true ? '已中止' : '错误: ${message.error}',
                 style: const TextStyle(fontSize: 11, color: Colors.orange),
               ),

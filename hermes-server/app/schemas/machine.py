@@ -14,6 +14,7 @@ class MachineResponse(BaseModel):
     id: str
     name: Optional[str]
     address: str
+    api_key: Optional[str]
     created_at: int
 
     class Config:

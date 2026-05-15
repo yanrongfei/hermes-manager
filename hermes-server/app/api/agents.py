@@ -1,12 +1,17 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
+import uuid
+from datetime import datetime
 from app.database import get_db
 from app.core.deps import get_current_user
 from app.core.errors import AppException, ErrorCode
 from app.schemas.agent import AgentCreate, AgentUpdate, AgentResponse
 from app.services.agent import AgentService
-from app.services.room import RoomService
+from app.services.gateway_client import GatewayClient
+from app.config import get_settings
+from app.services.machine import MachineService
+from app.models.agent import Agent
 
 router = APIRouter(tags=["agents"])
 
@@ -27,7 +32,38 @@ async def list_machine_agents(
     db: AsyncSession = Depends(get_db),
 ):
     service = AgentService(db)
-    return await service.get_machine_agents(machine_id, current_user.id)
+    agents = await service.get_machine_agents(machine_id, current_user.id)
+
+    # If no agents in DB, auto-discover from gateway and save them
+    if not agents:
+        machine_service = MachineService(db)
+        machine = await machine_service.get_machine(machine_id, current_user.id)
+        if machine:
+            settings = get_settings()
+            gateway = GatewayClient(machine.address, api_key=settings.API_SERVER_KEY)
+            try:
+                discovered = await gateway.list_agents()
+                now = int(datetime.utcnow().timestamp())
+                for d in discovered:
+                    agent = Agent(
+                        id=str(uuid.uuid4()),
+                        machine_id=machine_id,
+                        remote_id=d.get("remote_id", d.get("id", "")),
+                        name=d.get("name", "Agent"),
+                        description=d.get("description"),
+                        avatar=None,
+                        profile=None,
+                        invited=False,
+                        created_at=now,
+                    )
+                    db.add(agent)
+                await db.commit()
+                if discovered:
+                    agents = await service.get_machine_agents(machine_id, current_user.id)
+            finally:
+                await gateway.close()
+
+    return agents
 
 
 @router.post("/agents", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)

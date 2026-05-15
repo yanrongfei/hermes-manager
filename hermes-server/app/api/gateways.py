@@ -144,7 +144,7 @@ async def discover_agents(
     if not machine:
         raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
 
-    gateway = GatewayClient(machine.address)
+    gateway = GatewayClient(machine.address, api_key=settings.API_SERVER_KEY)
     try:
         agents = await gateway.list_agents()
         return agents

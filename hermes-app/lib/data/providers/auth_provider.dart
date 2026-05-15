@@ -42,10 +42,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = AuthState(user: user);
       return true;
     } on DioException catch (e) {
-      state = AuthState(error: _extractMsg(e) ?? '登录失败');
+      final msg = _extractMsg(e) ?? '登录失败';
+      state = AuthState(error: '$msg (${e.response?.statusCode})');
       return false;
-    } catch (e) {
-      state = AuthState(error: '登录失败');
+    } catch (e, st) {
+      state = AuthState(error: '登录失败: $e\n$st');
       return false;
     }
   }

@@ -29,11 +29,25 @@ class GatewayClient:
         return data.get("data", []) if isinstance(data, dict) else []
 
     async def list_agents(self) -> List[dict]:
-        """List available agents/profiles from Gateway."""
+        """List available agents/profiles from Gateway.
+        
+        Gateway does not implement /v1/profiles (returns 404).
+        We use /v1/models which returns the current profile as a model entry.
+        """
         try:
-            resp = await self.client.get("/v1/profiles")
+            resp = await self.client.get("/v1/models")
             data = resp.json()
-            return data.get("data", []) if isinstance(data, dict) else data if isinstance(data, list) else []
+            models = data.get("data", []) if isinstance(data, dict) else []
+            # Transform model entries to agent-like dicts for the frontend
+            return [
+                {
+                    "id": m.get("id", ""),
+                    "name": m.get("root") or m.get("id", "Agent"),
+                    "description": m.get("owned_by", "hermes"),
+                    "remote_id": m.get("id", ""),
+                }
+                for m in models
+            ]
         except Exception:
             return []
 

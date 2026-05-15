@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     DEFAULT_GATEWAY_API_KEY: str = ""
     DEFAULT_MODEL: str = "claude-sonnet-4-20250514"
 
+    # API key for authenticating with Hermes Gateway
+    API_SERVER_KEY: str = ""
+
     model_config = SettingsConfigDict(env_file=".env")
 
 

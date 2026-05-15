@@ -83,3 +83,12 @@ Uses Flutter with Riverpod for state management, dio for HTTP, and go_router for
 - pydantic-settings uses `SettingsConfigDict` (not `ConfigDict`) for model_config
 - Server runs on port 3002 in production (configured in docker-compose.prod.yml)
 - API docs available at `/docs` when server is running
+
+## Development Rules
+
+- **Every code change must be tested and pass before committing/pushing.**
+  - Backend changes: verify syntax (`python -c "from app.xxx import ..."`) and run relevant tests.
+  - Frontend (Flutter): run `flutter analyze` on modified files and fix all errors/warnings.
+  - Bug fixes: reproduce the issue, verify the fix works, then commit.
+  - New features: manual smoke-test the relevant flow end-to-end before pushing.
+  - Never skip testing by claiming "it should work" — verify it actually does.

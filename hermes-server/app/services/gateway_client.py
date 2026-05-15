@@ -51,8 +51,8 @@ class GatewayClient:
             return [
                 {
                     "id": m.get("id", ""),
-                    "name": m.get("root") or m.get("id", "Agent"),
-                    "description": m.get("owned_by", "hermes"),
+                    "name": m.get("id", "Agent"),
+                    "description": f"Model: {m.get('owned_by', 'unknown')}",
                     "remote_id": m.get("id", ""),
                 }
                 for m in models

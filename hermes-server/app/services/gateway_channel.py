@@ -14,6 +14,49 @@ from typing import AsyncGenerator, List, Optional
 from app.models.machine import Machine
 from app.services.gateway_client import GatewayClient
 from app.services.bridge_client import BridgeClient, list_local_agents
+from app.services.local_profile_scanner import scan_local_profiles
+
+
+def _enrich_with_local_profiles(agents: List[dict], machine_profile: Optional[str] = None) -> List[dict]:
+    """Enrich agent entries with local profile info for better display names."""
+    try:
+        profiles = scan_local_profiles()
+    except Exception:
+        return agents
+
+    if not profiles:
+        return agents
+
+    # Find the matching profile for this machine
+    target = None
+    if machine_profile:
+        target = next((p for p in profiles if p["profile_name"] == machine_profile), None)
+    if not target:
+        # Use active profile
+        target = next((p for p in profiles if p.get("active")), None)
+    if not target:
+        target = profiles[0]
+
+    model_name = target.get("model", "")
+    profile_name = target.get("profile_name", "")
+
+    for agent in agents:
+        # Replace default "hermes-agent" name with model name
+        if agent.get("name") == "hermes-agent" and model_name:
+            agent["name"] = model_name
+        # Add better description
+        if agent.get("description") in ("hermes", "Model: hermes"):
+            parts = []
+            if profile_name:
+                parts.append(f"Profile: {profile_name}")
+            if model_name:
+                parts.append(f"Model: {model_name}")
+            provider = target.get("provider", "")
+            if provider:
+                parts.append(f"Provider: {provider}")
+            agent["description"] = " · ".join(parts) if parts else "Hermes Agent"
+
+    return agents
 
 
 class GatewayChannel:
@@ -65,6 +108,8 @@ class GatewayChannel:
             agents = await http.list_agents()
             if agents:
                 self._active_mode = "http"
+                # Enrich default agent names with local profile info
+                agents = _enrich_with_local_profiles(agents, self.machine.profile_name)
                 return agents
         except Exception as e:
             print(f"[GatewayChannel] HTTP list_agents failed: {e}")

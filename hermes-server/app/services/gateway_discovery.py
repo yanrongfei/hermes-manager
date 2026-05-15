@@ -34,7 +34,14 @@ async def scan_local_gateways(exclude_addresses: Set[str] | None = None) -> List
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     gateways = []
+    seen_ports: set[int] = set()
     for r in results:
         if isinstance(r, dict) and r.get("online"):
-            gateways.append(r)
+            # Deduplicate: localhost and 127.0.0.1 are the same machine
+            # Keep the first result for each port
+            url = r["address"]
+            port = int(url.split(":")[-1])
+            if port not in seen_ports:
+                seen_ports.add(port)
+                gateways.append(r)
     return gateways

@@ -24,6 +24,7 @@ class DiscoveredGateway {
   final String? provider;
   final bool active;
   final bool apiServerConnected;
+  final String? apiKey;
 
   DiscoveredGateway({
     required this.address,
@@ -34,6 +35,7 @@ class DiscoveredGateway {
     this.provider,
     this.active = false,
     this.apiServerConnected = false,
+    this.apiKey,
   });
 
   bool get isLocal => mode == 'local';
@@ -48,6 +50,7 @@ class DiscoveredGateway {
       provider: json['provider'] as String?,
       active: json['active'] as bool? ?? false,
       apiServerConnected: json['api_server_connected'] as bool? ?? false,
+      apiKey: json['api_key'] as String?,
     );
   }
 }
@@ -94,6 +97,7 @@ class MachinesNotifier extends StateNotifier<AsyncValue<List<Machine>>> {
     await addMachine(
       gateway.address,
       name: name ?? gateway.profileName ?? gateway.address,
+      apiKey: gateway.apiKey,
       mode: gateway.mode,
       profileName: gateway.profileName,
     );

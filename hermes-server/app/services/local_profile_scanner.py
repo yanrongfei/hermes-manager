@@ -36,6 +36,30 @@ def _read_json(path: Path) -> dict[str, Any]:
     return {}
 
 
+def _read_env(path: Path) -> dict[str, str]:
+    """Parse a .env file into a dict."""
+    env: dict[str, str] = {}
+    if not path.exists():
+        return env
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                k, v = line.split("=", 1)
+                env[k.strip()] = v.strip().strip("\"'")
+    except Exception:
+        pass
+    return env
+
+
+def _extract_api_key(profile_home: Path) -> str:
+    """Extract API_SERVER_KEY from profile's .env file."""
+    env = _read_env(profile_home / ".env")
+    return env.get("API_SERVER_KEY", "")
+
+
 def _active_profile(home: Path) -> str:
     ap = home / "active_profile"
     if ap.exists():
@@ -125,6 +149,7 @@ def _scan_profile(profile_home: Path, profile_name: str, home: Path) -> dict[str
     address = f"http://{host}:{gateway_addr['port']}"
     mode = "http" if gw_info["api_server_connected"] else "local"
     online = gw_info["running"]
+    api_key = _extract_api_key(profile_home)
 
     return {
         "profile_name": profile_name,
@@ -140,6 +165,7 @@ def _scan_profile(profile_home: Path, profile_name: str, home: Path) -> dict[str
         "config_path": str(config_path),
         "address": address,
         "online": online,
+        "api_key": api_key,
     }
 
 

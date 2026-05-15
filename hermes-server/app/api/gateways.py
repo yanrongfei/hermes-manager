@@ -77,6 +77,7 @@ async def discover_gateways(
                 "online": p.get("online", False),
                 "active": p.get("active", False),
                 "api_server_connected": p.get("api_server_connected", False),
+                "api_key": p.get("api_key", ""),
             })
 
     return http_gateways + local_results

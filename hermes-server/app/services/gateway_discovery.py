@@ -54,6 +54,11 @@ async def _probe(host: str, port: int) -> dict | None:
     return None
 
 
+def _is_lan_ip(host: str) -> bool:
+    """True if host looks like a LAN IP (not localhost/loopback)."""
+    return host not in ("localhost", "127.0.0.1", "127.0.1.1")
+
+
 async def scan_local_gateways(exclude_addresses: Set[str] | None = None) -> List[dict]:
     exclude = exclude_addresses or set()
     scan_hosts = _expand_scan_hosts()
@@ -70,10 +75,16 @@ async def scan_local_gateways(exclude_addresses: Set[str] | None = None) -> List
     seen_ports: set[int] = set()
     for r in results:
         if isinstance(r, dict) and r.get("online"):
-            # Deduplicate: keep first result per port across all hosts
             url = r["address"]
+            # url format: http://host:port
+            host = url.split("//")[1].split(":")[0]
             port = int(url.split(":")[-1])
+            is_lan = _is_lan_ip(host)
             if port not in seen_ports:
+                # First time seeing this port — always add
                 seen_ports.add(port)
                 gateways.append(r)
+            elif is_lan:
+                # Same port found from LAN IP — replace the loopback entry
+                gateways = [g if int(g["address"].split(":")[-1]) != port else r for g in gateways]
     return gateways

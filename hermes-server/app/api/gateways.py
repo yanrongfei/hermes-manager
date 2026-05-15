@@ -57,7 +57,7 @@ async def create_gateway(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    gateway = GatewayClient(data.address)
+    gateway = GatewayClient(data.address, api_key=data.api_key)
     is_healthy = await gateway.health_check()
     await gateway.close()
 
@@ -68,6 +68,7 @@ async def create_gateway(
         user_id=current_user.id,
         name=data.name,
         address=data.address,
+        api_key=data.api_key,
     )
     db.add(machine)
     await db.commit()
@@ -110,7 +111,7 @@ async def test_gateway(
     if not machine:
         raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
 
-    gateway = GatewayClient(machine.address)
+    gateway = GatewayClient(machine.address, api_key=machine.api_key)
     is_healthy = await gateway.health_check()
     await gateway.close()
 
@@ -129,6 +130,8 @@ async def update_gateway(
         raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
     if data.name is not None:
         machine.name = data.name
+    if data.api_key is not None:
+        machine.api_key = data.api_key
     await db.commit()
     await db.refresh(machine)
     return _machine_to_response(machine)
@@ -144,7 +147,7 @@ async def discover_agents(
     if not machine:
         raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
 
-    gateway = GatewayClient(machine.address, api_key=settings.API_SERVER_KEY)
+    gateway = GatewayClient(machine.address, api_key=machine.api_key)
     try:
         agents = await gateway.list_agents()
         return agents

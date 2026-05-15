@@ -45,7 +45,7 @@ async def _get_gateway_for_room(room_id: str, user_id: str) -> GatewayClient:
             first_agent = room_agents[0]
             machine = await machine_svc.get_machine(first_agent.machine_id, user_id)
             if machine:
-                return GatewayClient(machine.address)
+                return GatewayClient(machine.address, api_key=machine.api_key)
     return GatewayClient(settings.DEFAULT_GATEWAY_URL, settings.DEFAULT_GATEWAY_API_KEY)
 
 

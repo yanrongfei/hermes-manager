@@ -11,6 +11,7 @@ class Machine(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     name = Column(String, nullable=True)
     address = Column(String, nullable=False)  # IP:Port
+    api_key = Column(String, nullable=True)  # Gateway API key (optional)
     created_at = Column(Integer, default=lambda: int(datetime.utcnow().timestamp()))
 
     # Relationships

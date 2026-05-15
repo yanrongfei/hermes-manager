@@ -40,7 +40,7 @@ async def list_machine_agents(
         machine = await machine_service.get_machine(machine_id, current_user.id)
         if machine:
             settings = get_settings()
-            gateway = GatewayClient(machine.address, api_key=settings.API_SERVER_KEY)
+            gateway = GatewayClient(machine.address, api_key=machine.api_key)
             try:
                 discovered = await gateway.list_agents()
                 now = int(datetime.utcnow().timestamp())

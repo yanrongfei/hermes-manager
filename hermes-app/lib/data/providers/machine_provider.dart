@@ -15,8 +15,27 @@ final machineAgentsProvider = FutureProvider.family<List<Agent>, String>((ref, m
   return (response.data as List).map((json) => Agent.fromJson(json)).toList();
 });
 
+class DiscoveredGateway {
+  final String address;
+  final bool online;
+
+  DiscoveredGateway({required this.address, this.online = true});
+
+  factory DiscoveredGateway.fromJson(Map<String, dynamic> json) {
+    return DiscoveredGateway(
+      address: json['address'] as String,
+      online: json['online'] as bool? ?? true,
+    );
+  }
+}
+
 class MachinesNotifier extends StateNotifier<AsyncValue<List<Machine>>> {
   final Ref _ref;
+  List<DiscoveredGateway> _discovered = [];
+  bool _isScanning = false;
+
+  List<DiscoveredGateway> get discovered => _discovered;
+  bool get isScanning => _isScanning;
 
   MachinesNotifier(this._ref) : super(const AsyncValue.loading()) {
     loadMachines();
@@ -43,6 +62,25 @@ class MachinesNotifier extends StateNotifier<AsyncValue<List<Machine>>> {
       'name': name,
     });
     await loadMachines();
+  }
+
+  Future<void> discoverGateways() async {
+    _isScanning = true;
+    _discovered = [];
+    // Notify listeners about scanning state
+    state = state;
+    try {
+      final dio = _ref.read(dioProvider);
+      final response = await dio.get('/gateways/discover');
+      _discovered = (response.data as List)
+          .map((json) => DiscoveredGateway.fromJson(json))
+          .toList();
+    } catch (_) {
+      _discovered = [];
+    } finally {
+      _isScanning = false;
+      state = state;
+    }
   }
 }
 

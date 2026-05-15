@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/config/app_config.dart';
 import '../models/auth.dart';
@@ -40,8 +41,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       state = AuthState(user: user);
       return true;
+    } on DioException catch (e) {
+      state = AuthState(error: _extractMsg(e) ?? '登录失败');
+      return false;
     } catch (e) {
-      state = AuthState(error: e.toString());
+      state = AuthState(error: '登录失败');
       return false;
     }
   }
@@ -56,10 +60,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
       });
       // Auto login after register
       return login(username, password);
+    } on DioException catch (e) {
+      state = AuthState(error: _extractMsg(e) ?? '注册失败');
+      return false;
     } catch (e) {
-      state = AuthState(error: e.toString());
+      state = AuthState(error: '注册失败');
       return false;
     }
+  }
+
+  String? _extractMsg(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic>) {
+      return data['msg'] as String?;
+    }
+    return null;
   }
 
   Future<void> logout() async {

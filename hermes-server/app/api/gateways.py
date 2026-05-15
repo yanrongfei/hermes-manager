@@ -17,6 +17,7 @@ from app.core.errors import AppException, ErrorCode
 from app.models.machine import Machine
 from app.schemas.machine import MachineCreate, MachineUpdate, MachineResponse
 from app.services.gateway_client import GatewayClient
+from app.services.gateway_discovery import scan_local_gateways
 from app.config import get_settings
 
 settings = get_settings()
@@ -35,6 +36,19 @@ async def list_gateways(
     )
     machines = list(result.scalars().all())
     return [_machine_to_response(m) for m in machines]
+
+
+@router.get("/gateways/discover", response_model=List[dict])
+async def discover_gateways(
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(Machine.address).where(Machine.user_id == current_user.id)
+    )
+    existing = {row[0] for row in result.all()}
+    gateways = await scan_local_gateways(exclude_addresses=existing)
+    return gateways
 
 
 @router.post("/gateways", response_model=MachineResponse, status_code=201)

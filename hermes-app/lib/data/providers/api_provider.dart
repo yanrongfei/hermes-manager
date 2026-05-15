@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/config/app_config.dart';
@@ -12,10 +13,32 @@ final dioProvider = Provider<Dio>((ref) {
   ));
 
   dio.interceptors.add(AuthInterceptor(ref));
-  dio.interceptors.add(LogInterceptor());
+  dio.interceptors.add(ResponseLogInterceptor());
 
   return dio;
 });
+
+class ResponseLogInterceptor extends Interceptor {
+  @override
+  void onResponse(Response response, ResponseInterceptorHandler handler) {
+    developer.log(
+      '[${response.statusCode}] ${response.requestOptions.method} ${response.requestOptions.path}\n'
+      'Response: ${response.data}',
+      name: 'API',
+    );
+    handler.next(response);
+  }
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) {
+    developer.log(
+      '[${err.response?.statusCode ?? 'ERR'}] ${err.requestOptions.method} ${err.requestOptions.path}\n'
+      'Response: ${err.response?.data}',
+      name: 'API',
+    );
+    handler.next(err);
+  }
+}
 
 class AuthInterceptor extends Interceptor {
   final Ref _ref;
@@ -33,7 +56,7 @@ class AuthInterceptor extends Interceptor {
   }
 
   @override
-  void onError(DioError err, ErrorInterceptorHandler handler) {
+  void onError(DioException err, ErrorInterceptorHandler handler) {
     if (err.response?.statusCode == 401) {
       // Handle token refresh - TODO for later
     }

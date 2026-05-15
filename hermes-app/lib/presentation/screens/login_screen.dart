@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/providers/auth_provider.dart';
+import '../widgets/tg_toast.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -33,6 +34,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     if (success && mounted) {
       context.go('/home');
+    } else if (mounted) {
+      final error = ref.read(authProvider).error;
+      if (error != null) {
+        TGToast.show(context, message: error, type: ToastType.error);
+      }
     }
   }
 
@@ -50,14 +56,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(
-                  Icons.chat_bubble,
-                  size: 64,
-                  color: Color(0xFF5856D6),
-                ),
+                Image.asset('assets/images/hermesagent.png', width: 72, height: 72),
                 const SizedBox(height: 16),
                 const Text(
-                  'Hermes',
+                  'Hermes Agent',
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
@@ -108,10 +110,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     style: TextStyle(color: Color(0xFFA0A0A0)),
                   ),
                 ),
-                if (authState.error != null) ...[
-                  const SizedBox(height: 16),
-                  Text(authState.error!, style: const TextStyle(color: Colors.red)),
-                ],
               ],
             ),
           ),

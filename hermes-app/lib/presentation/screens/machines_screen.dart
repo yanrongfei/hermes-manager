@@ -2,12 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/providers/machine_provider.dart';
 
-class MachinesScreen extends ConsumerWidget {
+class MachinesScreen extends ConsumerStatefulWidget {
   const MachinesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MachinesScreen> createState() => _MachinesScreenState();
+}
+
+class _MachinesScreenState extends ConsumerState<MachinesScreen> {
+  @override
+  Widget build(BuildContext context) {
     final machinesAsync = ref.watch(machinesNotifierProvider);
+    final notifier = ref.read(machinesNotifierProvider.notifier);
 
     return Scaffold(
       backgroundColor: const Color(0xFF212121),
@@ -17,60 +23,66 @@ class MachinesScreen extends ConsumerWidget {
         iconTheme: const IconThemeData(color: Color(0xFFECECEC)),
       ),
       body: machinesAsync.when(
-        data: (machines) => machines.isEmpty
-            ? Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.dns_outlined, size: 64, color: Colors.grey[700]),
-                    const SizedBox(height: 16),
-                    Text(
-                      '暂无 Gateway',
-                      style: TextStyle(color: Colors.grey[500], fontSize: 16),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '点击右下角添加远程 Gateway',
-                      style: TextStyle(color: Colors.grey[700], fontSize: 13),
-                    ),
-                  ],
-                ),
-              )
-            : RefreshIndicator(
-                onRefresh: () => ref.read(machinesNotifierProvider.notifier).loadMachines(),
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: machines.length,
-                  itemBuilder: (context, index) {
-                    final machine = machines[index];
-                    return Card(
-                      color: const Color(0xFF2A2A2A),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: const Color(0xFF5856D6).withAlpha(40),
-                          child: const Icon(Icons.dns, color: Color(0xFF5856D6)),
-                        ),
-                        title: Text(
-                          machine.name ?? machine.address,
-                          style: const TextStyle(color: Color(0xFFECECEC)),
-                        ),
-                        subtitle: Text(
-                          machine.address,
-                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                        ),
-                        trailing: Icon(Icons.chevron_right, color: Colors.grey[600]),
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => MachineDetailScreen(machineId: machine.id),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+        data: (machines) => RefreshIndicator(
+          onRefresh: () => notifier.loadMachines(),
+          child: ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              // Scan section
+              _ScanSection(
+                machines: machines,
+                notifier: notifier,
               ),
+              const SizedBox(height: 8),
+              // Existing gateways
+              if (machines.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  child: Column(
+                    children: [
+                      Icon(Icons.dns_outlined, size: 48, color: Colors.grey[700]),
+                      const SizedBox(height: 12),
+                      Text(
+                        '暂无 Gateway',
+                        style: TextStyle(color: Colors.grey[500], fontSize: 15),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '点击上方「扫描」发现本机 Gateway',
+                        style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ...machines.map((machine) => Card(
+                  color: const Color(0xFF2A2A2A),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: const Color(0xFF5856D6).withAlpha(40),
+                      child: const Icon(Icons.dns, color: Color(0xFF5856D6)),
+                    ),
+                    title: Text(
+                      machine.name ?? machine.address,
+                      style: const TextStyle(color: Color(0xFFECECEC)),
+                    ),
+                    subtitle: Text(
+                      machine.address,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                    trailing: Icon(Icons.chevron_right, color: Colors.grey[600]),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MachineDetailScreen(machineId: machine.id),
+                      ),
+                    ),
+                  ),
+                )),
+            ],
+          ),
+        ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
           child: Column(
@@ -78,10 +90,7 @@ class MachinesScreen extends ConsumerWidget {
             children: [
               Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
               const SizedBox(height: 12),
-              Text(
-                '加载失败',
-                style: TextStyle(color: Colors.grey[500]),
-              ),
+              Text('加载失败', style: TextStyle(color: Colors.grey[500])),
               const SizedBox(height: 8),
               TextButton(
                 onPressed: () => ref.read(machinesNotifierProvider.notifier).loadMachines(),
@@ -197,6 +206,134 @@ class MachinesScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ScanSection extends StatefulWidget {
+  final List machines;
+  final MachinesNotifier notifier;
+
+  const _ScanSection({required this.machines, required this.notifier});
+
+  @override
+  State<_ScanSection> createState() => _ScanSectionState();
+}
+
+class _ScanSectionState extends State<_ScanSection> {
+  bool _hasScanned = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final discovered = widget.notifier.discovered;
+    final isScanning = widget.notifier.isScanning;
+    final existingAddresses = widget.machines
+        .map((m) => m.address)
+        .toSet();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Scan button
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF2AABEE),
+              side: const BorderSide(color: Color(0xFF2AABEE), width: 1),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: isScanning
+                ? null
+                : () async {
+                    await widget.notifier.discoverGateways();
+                    setState(() => _hasScanned = true);
+                  },
+            icon: isScanning
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2AABEE)),
+                  )
+                : const Icon(Icons.wifi_tethering, size: 18),
+            label: Text(
+              isScanning ? '扫描中...' : '扫描本机 Gateway',
+              style: const TextStyle(fontSize: 15),
+            ),
+          ),
+        ),
+
+        // Discovered results
+        if (_hasScanned && !isScanning) ...[
+          const SizedBox(height: 12),
+          if (discovered.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                '未发现本机 Gateway，请确保已启动 Gateway 服务',
+                style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              ),
+            )
+          else ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '发现 ${discovered.length} 个 Gateway',
+                style: TextStyle(color: Colors.grey[400], fontSize: 13),
+              ),
+            ),
+            ...discovered.map((gw) {
+              final alreadyAdded = existingAddresses.contains(gw.address);
+              return Card(
+                color: const Color(0xFF2A2A2A),
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  dense: true,
+                  leading: Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.only(left: 4, right: 4),
+                    decoration: BoxDecoration(
+                      color: gw.online ? const Color(0xFF4DCD5E) : Colors.grey,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  title: Text(
+                    gw.address,
+                    style: const TextStyle(color: Color(0xFFECECEC), fontSize: 14),
+                  ),
+                  trailing: alreadyAdded
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[800],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            '已添加',
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                        )
+                      : TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF2AABEE),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            minimumSize: Size.zero,
+                          ),
+                          onPressed: () async {
+                            await widget.notifier.addMachine(gw.address);
+                          },
+                          child: const Text('添加', style: TextStyle(fontSize: 13)),
+                        ),
+                ),
+              );
+            }),
+          ],
+        ],
+      ],
     );
   }
 }

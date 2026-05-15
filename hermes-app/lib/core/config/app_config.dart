@@ -1,7 +1,7 @@
 class AppConfig {
-  static const String appName = 'Hermes App';
-  static const String baseUrl = 'http://localhost:8000';
-  static const String wsUrl = 'ws://localhost:8000';
+  static const String appName = 'Hermes Agent';
+  static const String baseUrl = 'http://62.234.25.205:3002';
+  static const String wsUrl = 'ws://62.234.25.205:3002';
 
   // Timeouts
   static const Duration connectTimeout = Duration(seconds: 30);

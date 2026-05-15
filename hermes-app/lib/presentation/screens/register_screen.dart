@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/providers/auth_provider.dart';
+import '../widgets/tg_toast.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -35,6 +36,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     if (success && mounted) {
       context.go('/home');
+    } else if (mounted) {
+      final error = ref.read(authProvider).error;
+      if (error != null) {
+        TGToast.show(context, message: error, type: ToastType.error);
+      }
     }
   }
 
@@ -52,11 +58,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 80),
-                const Icon(
-                  Icons.chat_bubble,
-                  size: 64,
-                  color: Color(0xFF5856D6),
-                ),
+                Image.asset('assets/images/hermesagent.png', width: 72, height: 72),
                 const SizedBox(height: 16),
                 const Text(
                   '创建账号',
@@ -135,10 +137,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     style: TextStyle(color: Color(0xFFA0A0A0)),
                   ),
                 ),
-                if (authState.error != null) ...[
-                  const SizedBox(height: 16),
-                  Text(authState.error!, style: const TextStyle(color: Colors.red)),
-                ],
               ],
             ),
           ),

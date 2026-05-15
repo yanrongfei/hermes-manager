@@ -35,15 +35,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.chat_bubble, size: 64, color: Color(0xFF5856D6)),
-            SizedBox(height: 16),
+            Image.asset('assets/images/hermesagent.png', width: 96, height: 96),
+            const SizedBox(height: 16),
             Text(
-              'Hermes',
+              'Hermes Agent',
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,

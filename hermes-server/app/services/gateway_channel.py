@@ -18,7 +18,7 @@ from app.services.local_profile_scanner import scan_local_profiles
 
 
 def _enrich_with_local_profiles(agents: List[dict], machine_profile: Optional[str] = None) -> List[dict]:
-    """Enrich agent entries with local profile info for better display names."""
+    """Replace generic agent entries with one per local profile."""
     try:
         profiles = scan_local_profiles()
     except Exception:
@@ -27,33 +27,43 @@ def _enrich_with_local_profiles(agents: List[dict], machine_profile: Optional[st
     if not profiles:
         return agents
 
-    # Find the matching profile for this machine
+    # If there's only one generic "hermes-agent", replace it with per-profile entries
+    if len(agents) == 1 and agents[0].get("name") == "hermes-agent":
+        result = []
+        for p in profiles:
+            model = p.get("model", "")
+            provider = p.get("provider", "")
+            parts = []
+            if model:
+                parts.append(f"Model: {model}")
+            if provider:
+                parts.append(f"Provider: {provider}")
+            result.append({
+                "id": p["profile_name"],
+                "name": p["profile_name"],
+                "description": " · ".join(parts) if parts else "Hermes Agent",
+                "remote_id": agents[0].get("remote_id", "hermes-agent"),
+            })
+        return result
+
+    # Otherwise enrich existing entries
     target = None
     if machine_profile:
         target = next((p for p in profiles if p["profile_name"] == machine_profile), None)
     if not target:
-        # Use active profile
         target = next((p for p in profiles if p.get("active")), None)
     if not target:
         target = profiles[0]
 
-    model_name = target.get("model", "")
-    profile_name = target.get("profile_name", "")
-
     for agent in agents:
-        # Replace default "hermes-agent" name with model name
-        if agent.get("name") == "hermes-agent" and model_name:
-            agent["name"] = model_name
-        # Add better description
+        if agent.get("name") == "hermes-agent":
+            agent["name"] = target["profile_name"]
         if agent.get("description") in ("hermes", "Model: hermes"):
             parts = []
-            if profile_name:
-                parts.append(f"Profile: {profile_name}")
-            if model_name:
-                parts.append(f"Model: {model_name}")
-            provider = target.get("provider", "")
-            if provider:
-                parts.append(f"Provider: {provider}")
+            if target.get("model"):
+                parts.append(f"Model: {target['model']}")
+            if target.get("provider"):
+                parts.append(f"Provider: {target['provider']}")
             agent["description"] = " · ".join(parts) if parts else "Hermes Agent"
 
     return agents

@@ -64,6 +64,20 @@ class MachinesNotifier extends StateNotifier<AsyncValue<List<Machine>>> {
     await loadMachines();
   }
 
+  Future<void> deleteMachine(String id) async {
+    final dio = _ref.read(dioProvider);
+    await dio.delete('/machines/$id');
+    await loadMachines();
+  }
+
+  Future<void> updateMachine(String id, {String? name}) async {
+    final dio = _ref.read(dioProvider);
+    await dio.put('/machines/$id', data: {
+      'name': name,
+    });
+    await loadMachines();
+  }
+
   Future<void> discoverGateways() async {
     _isScanning = true;
     _discovered = [];

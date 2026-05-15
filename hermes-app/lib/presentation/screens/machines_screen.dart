@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../data/models/machine.dart';
 import '../../data/providers/machine_provider.dart';
 
 class MachinesScreen extends ConsumerStatefulWidget {
@@ -346,6 +347,10 @@ class MachineDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final agentsAsync = ref.watch(machineAgentsProvider(machineId));
+    final machinesAsync = ref.watch(machinesNotifierProvider);
+    final machine = machinesAsync.whenOrNull(
+      data: (list) => list.where((m) => m.id == machineId).firstOrNull,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFF212121),
@@ -353,6 +358,41 @@ class MachineDetailScreen extends ConsumerWidget {
         backgroundColor: const Color(0xFF2A2A2A),
         title: const Text('Agent 列表', style: TextStyle(color: Color(0xFFECECEC))),
         iconTheme: const IconThemeData(color: Color(0xFFECECEC)),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Color(0xFFECECEC)),
+            color: const Color(0xFF2A2A2A),
+            onSelected: (value) {
+              if (value == 'edit') {
+                _showEditDialog(context, ref, machine);
+              } else if (value == 'delete') {
+                _showDeleteDialog(context, ref);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit, color: Color(0xFFECECEC), size: 20),
+                    SizedBox(width: 8),
+                    Text('编辑', style: TextStyle(color: Color(0xFFECECEC))),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete, color: Colors.red, size: 20),
+                    SizedBox(width: 8),
+                    Text('删除', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: agentsAsync.when(
         data: (agents) => agents.isEmpty
@@ -412,6 +452,113 @@ class MachineDetailScreen extends ConsumerWidget {
           child: Text(
             '错误: $e',
             style: TextStyle(color: Colors.grey[500]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text('确认删除', style: TextStyle(color: Color(0xFFECECEC))),
+        content: const Text(
+          '删除后无法恢复，且该 Gateway 下的所有 Agent 配置将一并移除。',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('取消', style: TextStyle(color: Colors.grey[500])),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref.read(machinesNotifierProvider.notifier).deleteMachine(machineId);
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text('删除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditDialog(BuildContext context, WidgetRef ref, Machine? machine) {
+    final nameController = TextEditingController(text: machine?.name);
+    final formKey = GlobalKey<FormState>();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF2A2A2A),
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          24,
+          24,
+          24,
+          MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
+        child: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '编辑 Gateway',
+                style: TextStyle(
+                  color: Color(0xFFECECEC),
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: nameController,
+                style: const TextStyle(color: Color(0xFFECECEC)),
+                decoration: InputDecoration(
+                  labelText: '名称（可选）',
+                  labelStyle: TextStyle(color: Colors.grey[500]),
+                  filled: true,
+                  fillColor: const Color(0xFF343541),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF5856D6),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () async {
+                    if (formKey.currentState!.validate()) {
+                      await ref.read(machinesNotifierProvider.notifier).updateMachine(
+                        machineId,
+                        name: nameController.text.isNotEmpty
+                            ? nameController.text.trim()
+                            : null,
+                      );
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    }
+                  },
+                  child: const Text(
+                    '保存',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

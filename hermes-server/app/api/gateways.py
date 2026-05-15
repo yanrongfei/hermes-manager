@@ -117,6 +117,23 @@ async def test_gateway(
     return {"gateway_id": gateway_id, "online": is_healthy}
 
 
+@router.patch("/gateways/{gateway_id}", response_model=MachineResponse)
+async def update_gateway(
+    gateway_id: str,
+    data: MachineUpdate,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    machine = await _get_user_gateway(db, gateway_id, current_user.id)
+    if not machine:
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
+    if data.name is not None:
+        machine.name = data.name
+    await db.commit()
+    await db.refresh(machine)
+    return _machine_to_response(machine)
+
+
 @router.get("/gateways/{gateway_id}/agents", response_model=List[dict])
 async def discover_agents(
     gateway_id: str,

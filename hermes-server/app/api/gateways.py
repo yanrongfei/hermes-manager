@@ -55,11 +55,22 @@ async def discover_gateways(
     # HTTP gateway discovery
     http_gateways = await scan_local_gateways(exclude_addresses=existing_addresses)
 
+    # Local profile discovery — also enriches HTTP results with api_key
+    local_profiles = scan_local_profiles()
+    local_api_keys: dict[str, str] = {}
+    for p in local_profiles:
+        if p.get("api_key"):
+            local_api_keys[p["address"]] = p["api_key"]
+
+    # Enrich HTTP results with api_key from local profiles
+    for g in http_gateways:
+        addr = g.get("address", "")
+        if not g.get("api_key") and addr in local_api_keys:
+            g["api_key"] = local_api_keys[addr]
+
     # Track addresses already found by HTTP scan to avoid duplicates
     seen_addresses = {g["address"] for g in http_gateways}
 
-    # Local profile discovery
-    local_profiles = scan_local_profiles()
     local_results = []
     for p in local_profiles:
         if p["profile_name"] not in existing_profiles:

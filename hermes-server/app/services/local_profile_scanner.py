@@ -1,7 +1,12 @@
-"""Scan local Hermes profiles from ~/.hermes/ directory."""
+"""Scan local Hermes profiles from ~/.hermes/ directory.
+
+Uses hermes_cli.profiles.list_profiles() when available (hermes-agent
+installed locally), falls back to reading config files directly.
+"""
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +14,11 @@ import yaml
 
 
 DEFAULT_HERMES_HOME = Path.home() / ".hermes"
+AGENT_ROOT_CANDIDATES = [
+    DEFAULT_HERMES_HOME / "hermes-agent",
+    Path("/opt/hermes/hermes-agent"),
+    Path("/usr/local/hermes-agent"),
+]
 
 
 def _hermes_home() -> Path:
@@ -16,6 +26,18 @@ def _hermes_home() -> Path:
     if env:
         return Path(env).expanduser().resolve()
     return DEFAULT_HERMES_HOME
+
+
+def _find_agent_root() -> Path | None:
+    explicit = os.environ.get("HERMES_AGENT_ROOT")
+    if explicit:
+        p = Path(explicit).expanduser()
+        if (p / "run_agent.py").exists():
+            return p
+    for candidate in AGENT_ROOT_CANDIDATES:
+        if (candidate / "run_agent.py").exists():
+            return candidate
+    return None
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -82,7 +104,6 @@ def _extract_gateway_address(cfg: dict[str, Any]) -> dict[str, Any]:
     host = "127.0.0.1"
     port = 8642
 
-    # Check platforms.api_server first
     platforms = cfg.get("platforms") or {}
     if isinstance(platforms, dict):
         api_server = platforms.get("api_server") or {}
@@ -91,7 +112,6 @@ def _extract_gateway_address(cfg: dict[str, Any]) -> dict[str, Any]:
             port = api_server.get("port", port)
             return {"host": host, "port": port}
 
-    # Fallback to global.gateway
     global_cfg = cfg.get("global") or {}
     gateway = global_cfg.get("gateway") or {}
     if isinstance(gateway, dict):
@@ -109,7 +129,6 @@ def _gateway_info(home: Path) -> dict[str, Any]:
     running = state.get("gateway_state") == "running" if state else False
     pid = state.get("pid") or pid_info.get("pid")
 
-    # Check if api_server platform is connected
     api_server_connected = False
     platforms_state = state.get("platforms") or {}
     api_server_state = platforms_state.get("api_server") or {}
@@ -122,6 +141,68 @@ def _gateway_info(home: Path) -> dict[str, Any]:
         "api_server_connected": api_server_connected,
     }
 
+
+# ── CLI-based scanning (preferred) ──────────────────────────────
+
+def _scan_via_cli() -> list[dict[str, Any]] | None:
+    """Try scanning profiles via hermes_cli.profiles.list_profiles()."""
+    agent_root = _find_agent_root()
+    if not agent_root:
+        return None
+
+    root_str = str(agent_root)
+    if root_str not in sys.path:
+        sys.path.insert(0, root_str)
+
+    try:
+        from hermes_cli.profiles import list_profiles
+    except Exception:
+        return None
+
+    home = _hermes_home()
+    active = _active_profile(home)
+
+    try:
+        profile_list = list_profiles()
+    except Exception:
+        return None
+
+    results = []
+    for p in profile_list:
+        home_dir = _hermes_home() if p.is_default else p.path
+        api_key = _extract_api_key(home_dir)
+
+        # Get gateway address from config
+        cfg = _read_yaml(home_dir / "config.yaml")
+        gw_addr = _extract_gateway_address(cfg)
+        host = gw_addr["host"]
+        if host in ("0.0.0.0", "::", ""):
+            host = "127.0.0.1"
+        address = f"http://{host}:{gw_addr['port']}"
+
+        gw_info = _gateway_info(home_dir if p.is_default else home)
+
+        results.append({
+            "profile_name": p.name,
+            "name": p.name,
+            "model": p.model or "",
+            "provider": p.provider or "",
+            "gateway_host": gw_addr["host"],
+            "gateway_port": gw_addr["port"],
+            "api_server_connected": gw_info["api_server_connected"],
+            "running": p.gateway_running,
+            "mode": "http" if gw_info["api_server_connected"] else "local",
+            "config_path": str(home_dir / "config.yaml"),
+            "address": address,
+            "online": p.gateway_running,
+            "active": p.is_default,
+            "api_key": api_key,
+        })
+
+    return results
+
+
+# ── File-based scanning (fallback) ──────────────────────────────
 
 def _scan_profile(profile_home: Path, profile_name: str, home: Path) -> dict[str, Any] | None:
     config_path = profile_home / "config.yaml"
@@ -136,10 +217,8 @@ def _scan_profile(profile_home: Path, profile_name: str, home: Path) -> dict[str
     gateway_addr = _extract_gateway_address(cfg)
     gw_info = _gateway_info(home if profile_name == "default" else profile_home)
 
-    # For non-default profiles, also check home gateway state
     if profile_name != "default":
         home_gw = _gateway_info(home)
-        # If home gateway is running, it might be serving this profile
         if home_gw["running"] and not gw_info["running"]:
             gw_info = home_gw
 
@@ -169,8 +248,8 @@ def _scan_profile(profile_home: Path, profile_name: str, home: Path) -> dict[str
     }
 
 
-def scan_local_profiles() -> list[dict[str, Any]]:
-    """Scan ~/.hermes/ for local profiles and return their info."""
+def _scan_via_files() -> list[dict[str, Any]]:
+    """Fallback: scan profiles by reading config files directly."""
     home = _hermes_home()
     if not home.exists():
         return []
@@ -179,14 +258,12 @@ def scan_local_profiles() -> list[dict[str, Any]]:
     active = _active_profile(home)
     seen: set[str] = set()
 
-    # Default profile (~/.hermes/config.yaml)
     default = _scan_profile(home, "default", home)
     if default:
         default["active"] = active == "default"
         profiles.append(default)
         seen.add("default")
 
-    # Named profiles (~/.hermes/profiles/<name>/)
     profiles_dir = home / "profiles"
     if profiles_dir.is_dir():
         for entry in sorted(profiles_dir.iterdir()):
@@ -198,3 +275,17 @@ def scan_local_profiles() -> list[dict[str, Any]]:
                     seen.add(entry.name)
 
     return profiles
+
+
+# ── Public API ──────────────────────────────────────────────────
+
+def scan_local_profiles() -> list[dict[str, Any]]:
+    """Scan ~/.hermes/ for local profiles.
+
+    Tries hermes_cli.profiles.list_profiles() first (if hermes-agent
+    is installed locally), falls back to reading config files directly.
+    """
+    result = _scan_via_cli()
+    if result is not None:
+        return result
+    return _scan_via_files()

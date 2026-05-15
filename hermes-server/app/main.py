@@ -13,6 +13,8 @@ from app.api.machines import router as machines_router
 from app.api.gateways import router as gateways_router
 from app.api.agents import router as agents_router
 from app.api.ws import router as ws_router
+# 导入所有模型以确保 SQLAlchemy 关系正确注册
+from app.models import User, Room, RoomMember, Message, Machine, Agent, RoomAgent
 
 settings = get_settings()
 

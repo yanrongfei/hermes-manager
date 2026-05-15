@@ -29,13 +29,11 @@ class _MachinesScreenState extends ConsumerState<MachinesScreen> {
           child: ListView(
             padding: const EdgeInsets.all(12),
             children: [
-              // Scan section
               _ScanSection(
                 machines: machines,
                 notifier: notifier,
               ),
               const SizedBox(height: 8),
-              // Existing gateways
               if (machines.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 32),
@@ -61,15 +59,43 @@ class _MachinesScreenState extends ConsumerState<MachinesScreen> {
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: const Color(0xFF5856D6).withAlpha(40),
-                      child: const Icon(Icons.dns, color: Color(0xFF5856D6)),
+                      backgroundColor: machine.isLocal
+                          ? const Color(0xFF34C759).withAlpha(40)
+                          : const Color(0xFF5856D6).withAlpha(40),
+                      child: Icon(
+                        machine.isLocal ? Icons.folder_special : Icons.dns,
+                        color: machine.isLocal ? const Color(0xFF34C759) : const Color(0xFF5856D6),
+                      ),
                     ),
-                    title: Text(
-                      machine.name ?? machine.address,
-                      style: const TextStyle(color: Color(0xFFECECEC)),
+                    title: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            machine.name ?? machine.address,
+                            style: const TextStyle(color: Color(0xFFECECEC)),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (machine.isLocal) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF34C759).withAlpha(30),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'Local',
+                              style: TextStyle(color: Color(0xFF34C759), fontSize: 10),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     subtitle: Text(
-                      machine.address,
+                      machine.isLocal
+                          ? (machine.profileName ?? machine.address)
+                          : machine.address,
                       style: TextStyle(color: Colors.grey[600], fontSize: 12),
                     ),
                     trailing: Icon(Icons.chevron_right, color: Colors.grey[600]),
@@ -212,7 +238,7 @@ class _MachinesScreenState extends ConsumerState<MachinesScreen> {
 }
 
 class _ScanSection extends StatefulWidget {
-  final List machines;
+  final List<Machine> machines;
   final MachinesNotifier notifier;
 
   const _ScanSection({required this.machines, required this.notifier});
@@ -228,14 +254,15 @@ class _ScanSectionState extends State<_ScanSection> {
   Widget build(BuildContext context) {
     final discovered = widget.notifier.discovered;
     final isScanning = widget.notifier.isScanning;
-    final existingAddresses = widget.machines
-        .map((m) => m.address)
+    final existingAddresses = widget.machines.map((m) => m.address).toSet();
+    final existingProfiles = widget.machines
+        .where((m) => m.profileName != null)
+        .map((m) => m.profileName!)
         .toSet();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Scan button
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
@@ -261,20 +288,19 @@ class _ScanSectionState extends State<_ScanSection> {
                   )
                 : const Icon(Icons.wifi_tethering, size: 18),
             label: Text(
-              isScanning ? '扫描中...' : '扫描本机 Gateway',
+              isScanning ? '扫描中...' : '扫描 Gateway',
               style: const TextStyle(fontSize: 15),
             ),
           ),
         ),
 
-        // Discovered results
         if (_hasScanned && !isScanning) ...[
           const SizedBox(height: 12),
           if (discovered.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
-                '未发现本机 Gateway，请确保已启动 Gateway 服务',
+                '未发现 Gateway，请确保已启动 Gateway 服务',
                 style: TextStyle(color: Colors.grey[600], fontSize: 13),
               ),
             )
@@ -287,25 +313,81 @@ class _ScanSectionState extends State<_ScanSection> {
               ),
             ),
             ...discovered.map((gw) {
-              final alreadyAdded = existingAddresses.contains(gw.address);
+              final alreadyAdded = gw.isLocal
+                  ? existingProfiles.contains(gw.profileName)
+                  : existingAddresses.contains(gw.address);
+
               return Card(
                 color: const Color(0xFF2A2A2A),
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
                   dense: true,
-                  leading: Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.only(left: 4, right: 4),
-                    decoration: BoxDecoration(
-                      color: gw.online ? const Color(0xFF4DCD5E) : Colors.grey,
-                      shape: BoxShape.circle,
-                    ),
+                  leading: gw.isLocal
+                      ? Container(
+                          width: 10,
+                          height: 10,
+                          margin: const EdgeInsets.only(left: 4, right: 4),
+                          decoration: BoxDecoration(
+                            color: gw.online ? const Color(0xFF34C759) : Colors.grey,
+                            shape: BoxShape.circle,
+                          ),
+                        )
+                      : Container(
+                          width: 10,
+                          height: 10,
+                          margin: const EdgeInsets.only(left: 4, right: 4),
+                          decoration: BoxDecoration(
+                            color: gw.online ? const Color(0xFF4DCD5E) : Colors.grey,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                  title: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          gw.isLocal
+                              ? (gw.profileName ?? gw.address)
+                              : gw.address,
+                          style: const TextStyle(color: Color(0xFFECECEC), fontSize: 14),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (gw.isLocal) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF34C759).withAlpha(30),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Local',
+                            style: TextStyle(color: Color(0xFF34C759), fontSize: 9),
+                          ),
+                        ),
+                      ],
+                      if (gw.active) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2AABEE).withAlpha(30),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Active',
+                            style: TextStyle(color: Color(0xFF2AABEE), fontSize: 9),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  title: Text(
-                    gw.address,
-                    style: const TextStyle(color: Color(0xFFECECEC), fontSize: 14),
-                  ),
+                  subtitle: gw.model != null
+                      ? Text(
+                          '${gw.model}${gw.provider != null ? ' · ${gw.provider}' : ''}',
+                          style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                        )
+                      : null,
                   trailing: alreadyAdded
                       ? Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -325,7 +407,7 @@ class _ScanSectionState extends State<_ScanSection> {
                             minimumSize: Size.zero,
                           ),
                           onPressed: () async {
-                            await widget.notifier.addMachine(gw.address);
+                            await widget.notifier.addDiscoveredGateway(gw);
                           },
                           child: const Text('添加', style: TextStyle(fontSize: 13)),
                         ),
@@ -356,7 +438,12 @@ class MachineDetailScreen extends ConsumerWidget {
       backgroundColor: const Color(0xFF212121),
       appBar: AppBar(
         backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text('Agent 列表', style: TextStyle(color: Color(0xFFECECEC))),
+        title: Text(
+          machine?.isLocal == true
+              ? '${machine!.profileName ?? 'Local'} · Agents'
+              : 'Agent 列表',
+          style: const TextStyle(color: Color(0xFFECECEC)),
+        ),
         iconTheme: const IconThemeData(color: Color(0xFFECECEC)),
         actions: [
           PopupMenuButton<String>(

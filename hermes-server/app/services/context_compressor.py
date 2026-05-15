@@ -16,7 +16,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.message import Message
 from app.models.room import Room
-from app.services.gateway_client import GatewayClient
+from app.services.gateway_channel import GatewayChannel
 from app.services.websocket import manager
 
 
@@ -42,7 +42,7 @@ class ContextCompressor:
         self,
         db: AsyncSession,
         room_id: str,
-        gateway: GatewayClient,
+        gateway: GatewayChannel,
         trigger_tokens: int = 100000,
         max_history_tokens: int = 32000,
         tail_message_count: int = 20,

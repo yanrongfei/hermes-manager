@@ -8,8 +8,7 @@ from app.core.deps import get_current_user
 from app.core.errors import AppException, ErrorCode
 from app.schemas.agent import AgentCreate, AgentUpdate, AgentResponse
 from app.services.agent import AgentService
-from app.services.gateway_client import GatewayClient
-from app.config import get_settings
+from app.services.gateway_channel import GatewayChannel
 from app.services.machine import MachineService
 from app.models.agent import Agent
 
@@ -39,10 +38,9 @@ async def list_machine_agents(
         machine_service = MachineService(db)
         machine = await machine_service.get_machine(machine_id, current_user.id)
         if machine:
-            settings = get_settings()
-            gateway = GatewayClient(machine.address, api_key=machine.api_key)
+            channel = GatewayChannel(machine)
             try:
-                discovered = await gateway.list_agents()
+                discovered = await channel.list_agents()
                 now = int(datetime.utcnow().timestamp())
                 for d in discovered:
                     agent = Agent(
@@ -61,7 +59,7 @@ async def list_machine_agents(
                 if discovered:
                     agents = await service.get_machine_agents(machine_id, current_user.id)
             finally:
-                await gateway.close()
+                await channel.close()
 
     return agents
 

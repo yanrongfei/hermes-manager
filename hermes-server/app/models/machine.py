@@ -10,8 +10,10 @@ class Machine(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     name = Column(String, nullable=True)
-    address = Column(String, nullable=False)  # IP:Port
+    address = Column(String, nullable=False)  # IP:Port or local profile path
     api_key = Column(String, nullable=True)  # Gateway API key (optional)
+    mode = Column(String, default="http")  # "http" or "local"
+    profile_name = Column(String, nullable=True)  # Local profile name
     created_at = Column(Integer, default=lambda: int(datetime.utcnow().timestamp()))
 
     # Relationships

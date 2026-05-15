@@ -3,7 +3,7 @@ import socket
 from typing import List, Set
 from app.services.gateway_client import GatewayClient
 
-CANDIDATE_PORTS = [8642, 8080, 8443, 3000, 5000]
+CANDIDATE_PORTS = [8642]
 SCAN_TIMEOUT = 2.0
 
 
@@ -46,9 +46,12 @@ async def _probe(host: str, port: int) -> dict | None:
         client.client.timeout = SCAN_TIMEOUT
         healthy = await client.health_check()
         if healthy:
+            print(f"[Gateway Discovery] Found gateway at {address}")
             return {"address": address, "name": None, "online": True}
-    except Exception:
-        pass
+        else:
+            print(f"[Gateway Discovery] Health check failed for {address}")
+    except Exception as e:
+        print(f"[Gateway Discovery] Failed to probe {address}: {e}")
     finally:
         await client.close()
     return None

@@ -12,7 +12,7 @@ from app.services.room import RoomService
 from app.services.message import MessageService
 from app.services.agent import AgentService
 from app.services.websocket import manager
-from app.services.gateway_client import GatewayClient
+from app.services.gateway_channel import GatewayChannel
 from app.services.run_executor import RunExecutor
 
 settings = get_settings()
@@ -30,9 +30,9 @@ def _extract_mentions(content: str) -> List[str]:
     return matches
 
 
-async def _get_gateway_for_room(room_id: str, user_id: str) -> GatewayClient:
+async def _get_gateway_for_room(room_id: str, user_id: str) -> GatewayChannel:
     """
-    Get the Gateway client for a room.
+    Get the Gateway channel for a room.
 
     Priority: 1) Room's agents' gateways, 2) Default config.
     """
@@ -45,8 +45,14 @@ async def _get_gateway_for_room(room_id: str, user_id: str) -> GatewayClient:
             first_agent = room_agents[0]
             machine = await machine_svc.get_machine(first_agent.machine_id, user_id)
             if machine:
-                return GatewayClient(machine.address, api_key=machine.api_key)
-    return GatewayClient(settings.DEFAULT_GATEWAY_URL, settings.DEFAULT_GATEWAY_API_KEY)
+                return GatewayChannel(machine)
+    from app.models.machine import Machine as MachineModel
+    default_machine = MachineModel(
+        address=settings.DEFAULT_GATEWAY_URL,
+        api_key=settings.DEFAULT_GATEWAY_API_KEY,
+        mode="http",
+    )
+    return GatewayChannel(default_machine)
 
 
 async def _format_conversation_history(room_id: str, limit: int = 50) -> List[dict]:

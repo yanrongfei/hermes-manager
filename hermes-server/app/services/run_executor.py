@@ -2,7 +2,7 @@ import asyncio
 import json
 from typing import Optional
 from app.services.websocket import manager
-from app.services.gateway_client import GatewayClient
+from app.services.gateway_channel import GatewayChannel
 
 
 class RunExecutor:
@@ -18,7 +18,7 @@ class RunExecutor:
         message_id: str,
         agent_id: str,
         agent_name: str,
-        gateway: GatewayClient,
+        gateway: GatewayChannel,
     ):
         self.room_id = room_id
         self.message_id = message_id

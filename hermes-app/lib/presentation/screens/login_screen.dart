@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/providers/auth_provider.dart';
-import '../widgets/tg_toast.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -37,7 +36,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } else if (mounted) {
       final error = ref.read(authProvider).error;
       if (error != null) {
-        TGToast.show(context, message: error, type: ToastType.error);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error), backgroundColor: Colors.red),
+        );
       }
     }
   }

@@ -18,6 +18,8 @@ from app.models.machine import Machine
 from app.schemas.machine import MachineCreate, MachineUpdate, MachineResponse
 from app.services.gateway_client import GatewayClient
 from app.services.gateway_discovery import scan_local_gateways
+from app.services.local_profile_scanner import scan_local_profiles
+from app.services.gateway_channel import GatewayChannel
 from app.config import get_settings
 
 settings = get_settings()
@@ -44,11 +46,33 @@ async def discover_gateways(
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(
-        select(Machine.address).where(Machine.user_id == current_user.id)
+        select(Machine).where(Machine.user_id == current_user.id)
     )
-    existing = {row[0] for row in result.all()}
-    gateways = await scan_local_gateways(exclude_addresses=existing)
-    return gateways
+    existing_machines = list(result.scalars().all())
+    existing_addresses = {m.address for m in existing_machines}
+    existing_profiles = {m.profile_name for m in existing_machines if m.profile_name}
+
+    # HTTP gateway discovery
+    http_gateways = await scan_local_gateways(exclude_addresses=existing_addresses)
+
+    # Local profile discovery
+    local_profiles = scan_local_profiles()
+    local_results = []
+    for p in local_profiles:
+        if p["profile_name"] not in existing_profiles:
+            local_results.append({
+                "profile_name": p["profile_name"],
+                "name": p.get("name", p["profile_name"]),
+                "address": p["address"],
+                "mode": p["mode"],
+                "model": p.get("model", ""),
+                "provider": p.get("provider", ""),
+                "online": p.get("online", False),
+                "active": p.get("active", False),
+                "api_server_connected": p.get("api_server_connected", False),
+            })
+
+    return http_gateways + local_results
 
 
 @router.post("/gateways", response_model=MachineResponse, status_code=201)
@@ -61,6 +85,10 @@ async def create_gateway(
     is_healthy = await gateway.health_check()
     await gateway.close()
 
+    # Local mode doesn't require HTTP health check
+    if data.mode == "local" and not is_healthy:
+        is_healthy = True
+
     if not is_healthy:
         raise AppException(ErrorCode.GATEWAY_UNREACHABLE, f"网关 {data.address} 无法连接", status_code=400)
 
@@ -69,6 +97,8 @@ async def create_gateway(
         name=data.name,
         address=data.address,
         api_key=data.api_key,
+        mode=data.mode,
+        profile_name=data.profile_name,
     )
     db.add(machine)
     await db.commit()
@@ -111,11 +141,12 @@ async def test_gateway(
     if not machine:
         raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
 
-    gateway = GatewayClient(machine.address, api_key=machine.api_key)
-    is_healthy = await gateway.health_check()
-    await gateway.close()
-
-    return {"gateway_id": gateway_id, "online": is_healthy}
+    channel = GatewayChannel(machine)
+    try:
+        is_healthy = await channel.health_check()
+        return {"gateway_id": gateway_id, "online": is_healthy, "mode": channel.active_mode}
+    finally:
+        await channel.close()
 
 
 @router.patch("/gateways/{gateway_id}", response_model=MachineResponse)
@@ -147,12 +178,12 @@ async def discover_agents(
     if not machine:
         raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
 
-    gateway = GatewayClient(machine.address, api_key=machine.api_key)
+    channel = GatewayChannel(machine)
     try:
-        agents = await gateway.list_agents()
+        agents = await channel.list_agents()
         return agents
     finally:
-        await gateway.close()
+        await channel.close()
 
 
 # ── Gateway Proxy ───────────────────────────────────────────────
@@ -215,5 +246,8 @@ def _machine_to_response(machine: Machine) -> MachineResponse:
         id=machine.id,
         name=machine.name,
         address=machine.address,
+        api_key=machine.api_key,
+        mode=machine.mode or "http",
+        profile_name=machine.profile_name,
         created_at=machine.created_at,
     )

@@ -115,9 +115,9 @@ class _MachinesScreenState extends ConsumerState<MachinesScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
+              Icon(Icons.wifi_off, size: 48, color: Colors.grey[600]),
               const SizedBox(height: 12),
-              Text('加载失败', style: TextStyle(color: Colors.grey[500])),
+              Text('加载失败，请检查网络', style: TextStyle(color: Colors.grey[500])),
               const SizedBox(height: 8),
               TextButton(
                 onPressed: () => ref.read(machinesNotifierProvider.notifier).loadMachines(),
@@ -556,9 +556,13 @@ class MachineDetailScreen extends ConsumerWidget {
               ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
-          child: Text(
-            '错误: $e',
-            style: TextStyle(color: Colors.grey[500]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.smart_toy_outlined, size: 64, color: Colors.grey[600]),
+              const SizedBox(height: 16),
+              Text('加载失败，请稍后重试', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+            ],
           ),
         ),
       ),

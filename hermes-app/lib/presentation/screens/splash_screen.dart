@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/config/app_config.dart';
 import '../../data/providers/storage_provider.dart';
+import '../../data/providers/api_provider.dart';
+import '../../data/providers/auth_provider.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -19,16 +21,27 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _checkAuth() async {
-    // Delay for splash effect
-    await Future.delayed(const Duration(seconds: 1));
+    await Future.delayed(const Duration(milliseconds: 800));
 
     final storage = ref.read(storageProvider);
     final token = await storage.get(AppConfig.accessTokenKey);
     if (!mounted) return;
 
-    if (token != null) {
+    if (token == null) {
+      context.go('/login');
+      return;
+    }
+
+    // Validate token by calling /auth/me
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.get('/auth/me');
+      if (!mounted) return;
       context.go('/home');
-    } else {
+    } catch (e) {
+      // Token invalid or expired, go to login
+      await ref.read(authProvider.notifier).logout();
+      if (!mounted) return;
       context.go('/login');
     }
   }

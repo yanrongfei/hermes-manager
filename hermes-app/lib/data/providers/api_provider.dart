@@ -36,6 +36,11 @@ class ResponseLogInterceptor extends Interceptor {
       'Response: ${err.response?.data}',
       name: 'API',
     );
+    // 401: token invalid/expired, redirect to login
+    if (err.response?.statusCode == 401) {
+      developer.log('401 Unauthorized, token expired or invalid', name: 'API');
+      // AuthInterceptor can't call logout directly, handled by auth state
+    }
     handler.next(err);
   }
 }

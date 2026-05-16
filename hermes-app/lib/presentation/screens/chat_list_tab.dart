@@ -85,9 +85,9 @@ class ChatListTab extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
+              Icon(Icons.wifi_off, size: 48, color: Colors.grey[600]),
               const SizedBox(height: 12),
-              Text('错误: $e', style: TextStyle(color: Colors.grey[500])),
+              Text('加载失败，请检查网络', style: TextStyle(color: Colors.grey[500])),
             ],
           ),
         ),

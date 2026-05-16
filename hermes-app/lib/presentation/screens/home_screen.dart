@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../data/providers/auth_provider.dart';
 import 'chat_list_tab.dart';
 import 'discover_tab.dart';
 import 'profile_tab.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
 
   final _tabs = const [
@@ -20,7 +23,26 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    // Check auth on mount
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authState = ref.read(authProvider);
+      if (!authState.isAuthenticated) {
+        context.go('/login');
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Watch auth state - redirect if not authenticated
+    ref.listen<AuthState>(authProvider, (prev, next) {
+      if (!next.isAuthenticated) {
+        context.go('/login');
+      }
+    });
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,

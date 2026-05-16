@@ -1,13 +1,10 @@
-version: '3.8'
-
 services:
   hermes-server:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: hermes-server
-    ports:
-      - "3002:8000"
+    network_mode: host
     volumes:
       - /vol1/1000/nas1/docker/hermes-server:/app/data
     environment:

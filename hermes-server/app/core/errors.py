@@ -27,17 +27,17 @@ class ErrorCode(str, Enum):
 
 
 ERROR_MESSAGES: dict[ErrorCode, str] = {
-    ErrorCode.AUTH_USERNAME_EXISTS: "用户名已存在",
-    ErrorCode.AUTH_INVALID_CREDENTIALS: "用户名或密码错误",
-    ErrorCode.AUTH_INVALID_TOKEN: "无效的认证令牌",
-    ErrorCode.AUTH_TOKEN_EXPIRED: "认证令牌已过期",
-    ErrorCode.AUTH_UNAUTHORIZED: "未授权，请先登录",
-    ErrorCode.VALIDATION_ERROR: "请求参数校验失败",
+    ErrorCode.AUTH_USERNAME_EXISTS: "用户名已被注册，请尝试其他用户名",
+    ErrorCode.AUTH_INVALID_CREDENTIALS: "用户名或密码错误，请检查后重试",
+    ErrorCode.AUTH_INVALID_TOKEN: "登录已失效，请重新登录",
+    ErrorCode.AUTH_TOKEN_EXPIRED: "登录已过期，请重新登录",
+    ErrorCode.AUTH_UNAUTHORIZED: "请先登录后再操作",
+    ErrorCode.VALIDATION_ERROR: "请求参数不合法",
     ErrorCode.RESOURCE_NOT_FOUND: "请求的资源不存在",
     ErrorCode.RESOURCE_FORBIDDEN: "无权访问该资源",
-    ErrorCode.RESOURCE_CONFLICT: "资源冲突",
+    ErrorCode.RESOURCE_CONFLICT: "操作冲突，请刷新后重试",
     ErrorCode.RESOURCE_BAD_REQUEST: "请求参数错误",
-    ErrorCode.GATEWAY_UNREACHABLE: "网关连接失败",
+    ErrorCode.GATEWAY_UNREACHABLE: "无法连接到网关，请检查地址和网络",
     ErrorCode.INTERNAL_ERROR: "服务器内部错误",
 }
 

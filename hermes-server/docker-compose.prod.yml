@@ -12,6 +12,6 @@ services:
       - /vol1/1000/nas1/docker/hermes-server:/app/data
     environment:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-in-production}
-      - DEBUG=false
+      - DEBUG=true
       - DATABASE_URL=sqlite+aiosqlite:///./data/hermes.db
     restart: unless-stopped

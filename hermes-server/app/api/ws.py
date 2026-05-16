@@ -40,19 +40,25 @@ async def _get_gateway_for_room(room_id: str, user_id: str) -> GatewayChannel:
         agent_svc = AgentService(session)
         room_agents = await agent_svc.get_room_agents(room_id)
         if room_agents:
-            from app.services.machine import MachineService
-            machine_svc = MachineService(session)
+            from app.services.gateway import GatewayService
+            from app.models.profile import Profile
             first_agent = room_agents[0]
-            machine = await machine_svc.get_machine(first_agent.machine_id, user_id)
-            if machine:
-                return GatewayChannel(machine)
-    from app.models.machine import Machine as MachineModel
-    default_machine = MachineModel(
+            # Walk agent -> profile -> gateway
+            result = await session.execute(
+                select(Profile).where(Profile.id == first_agent.profile_id)
+            )
+            profile = result.scalar_one_or_none()
+            if profile:
+                gw_svc = GatewayService(session)
+                gateway = await gw_svc.get_gateway(profile.gateway_id, user_id)
+                if gateway:
+                    return GatewayChannel(gateway)
+    from app.models.gateway import Gateway as GatewayModel
+    default_gw = GatewayModel(
         address=settings.DEFAULT_GATEWAY_URL,
         api_key=settings.DEFAULT_GATEWAY_API_KEY,
-        mode="http",
     )
-    return GatewayChannel(default_machine)
+    return GatewayChannel(default_gw)
 
 
 async def _format_conversation_history(room_id: str, limit: int = 50) -> List[dict]:

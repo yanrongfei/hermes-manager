@@ -15,4 +15,4 @@ class User(Base):
 
     # Relationships
     rooms = relationship("RoomMember", back_populates="user")
-    machines = relationship("Machine", back_populates="user")
+    gateways = relationship("Gateway", back_populates="user")

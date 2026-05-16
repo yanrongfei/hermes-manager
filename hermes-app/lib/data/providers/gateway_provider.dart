@@ -1,61 +1,40 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/machine.dart';
-import '../models/agent.dart';
+import '../models/gateway.dart';
 import 'api_provider.dart';
-
-final machinesProvider = FutureProvider<List<Machine>>((ref) async {
-  final dio = ref.read(dioProvider);
-  final response = await dio.get('/machines');
-  return (response.data as List).map((json) => Machine.fromJson(json)).toList();
-});
-
-final machineAgentsProvider = FutureProvider.family<List<Agent>, String>((ref, machineId) async {
-  final dio = ref.read(dioProvider);
-  final response = await dio.get('/machines/$machineId/agents');
-  return (response.data as List).map((json) => Agent.fromJson(json)).toList();
-});
 
 class DiscoveredGateway {
   final String address;
   final bool online;
-  final String mode;
   final String? profileName;
   final String? model;
   final String? provider;
   final bool active;
-  final bool apiServerConnected;
   final String? apiKey;
 
   DiscoveredGateway({
     required this.address,
     this.online = true,
-    this.mode = 'http',
     this.profileName,
     this.model,
     this.provider,
     this.active = false,
-    this.apiServerConnected = false,
     this.apiKey,
   });
-
-  bool get isLocal => mode == 'local';
 
   factory DiscoveredGateway.fromJson(Map<String, dynamic> json) {
     return DiscoveredGateway(
       address: json['address'] as String,
       online: json['online'] as bool? ?? true,
-      mode: json['mode'] as String? ?? 'http',
       profileName: json['profile_name'] as String?,
       model: json['model'] as String?,
       provider: json['provider'] as String?,
       active: json['active'] as bool? ?? false,
-      apiServerConnected: json['api_server_connected'] as bool? ?? false,
       apiKey: json['api_key'] as String?,
     );
   }
 }
 
-class MachinesNotifier extends StateNotifier<AsyncValue<List<Machine>>> {
+class GatewaysNotifier extends StateNotifier<AsyncValue<List<Gateway>>> {
   final Ref _ref;
   List<DiscoveredGateway> _discovered = [];
   bool _isScanning = false;
@@ -63,58 +42,71 @@ class MachinesNotifier extends StateNotifier<AsyncValue<List<Machine>>> {
   List<DiscoveredGateway> get discovered => _discovered;
   bool get isScanning => _isScanning;
 
-  MachinesNotifier(this._ref) : super(const AsyncValue.loading()) {
-    loadMachines();
+  GatewaysNotifier(this._ref) : super(const AsyncValue.loading()) {
+    loadGateways();
   }
 
-  Future<void> loadMachines() async {
+  Future<void> loadGateways() async {
     state = const AsyncValue.loading();
     try {
       final dio = _ref.read(dioProvider);
       final response = await dio.get('/gateways');
-      final machines = (response.data as List)
-          .map((json) => Machine.fromJson(json))
+      final gateways = (response.data as List)
+          .map((json) => Gateway.fromJson(json))
           .toList();
-      state = AsyncValue.data(machines);
+      state = AsyncValue.data(gateways);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
   }
 
-  Future<void> addMachine(String address, {String? name, String? apiKey, String mode = 'http', String? profileName}) async {
+  Future<void> addGateway(String address, {String? name, String? apiKey}) async {
     final dio = _ref.read(dioProvider);
     await dio.post('/gateways', data: {
       'address': address,
       'name': name,
       'api_key': apiKey,
-      'mode': mode,
-      'profile_name': profileName,
     });
-    await loadMachines();
+    await loadGateways();
   }
 
   Future<void> addDiscoveredGateway(DiscoveredGateway gateway, {String? name}) async {
-    await addMachine(
+    await addGateway(
       gateway.address,
       name: name ?? gateway.profileName ?? gateway.address,
       apiKey: gateway.apiKey,
-      mode: gateway.mode,
-      profileName: gateway.profileName,
     );
   }
 
-  Future<void> deleteMachine(String id) async {
+  Future<void> deleteGateway(String id) async {
     final dio = _ref.read(dioProvider);
     await dio.delete('/gateways/$id');
-    await loadMachines();
+    await loadGateways();
   }
 
-  Future<void> updateMachine(String id, {String? name}) async {
+  Future<void> updateGateway(String id, {String? name, String? apiKey}) async {
     final dio = _ref.read(dioProvider);
     await dio.patch('/gateways/$id', data: {
       'name': name,
+      'api_key': apiKey,
     });
-    await loadMachines();
+    await loadGateways();
+  }
+
+  Future<void> syncGateway(String id) async {
+    final dio = _ref.read(dioProvider);
+    await dio.post('/gateways/$id/sync');
+    await loadGateways();
+  }
+
+  Future<bool> testGateway(String id) async {
+    final dio = _ref.read(dioProvider);
+    try {
+      final response = await dio.post('/gateways/$id/test');
+      return response.data['online'] as bool? ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> discoverGateways() async {
@@ -136,6 +128,6 @@ class MachinesNotifier extends StateNotifier<AsyncValue<List<Machine>>> {
   }
 }
 
-final machinesNotifierProvider = StateNotifierProvider<MachinesNotifier, AsyncValue<List<Machine>>>((ref) {
-  return MachinesNotifier(ref);
+final gatewaysNotifierProvider = StateNotifierProvider<GatewaysNotifier, AsyncValue<List<Gateway>>>((ref) {
+  return GatewaysNotifier(ref);
 });

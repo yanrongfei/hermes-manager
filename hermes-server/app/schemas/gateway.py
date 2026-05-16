@@ -2,27 +2,27 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 
-class MachineCreate(BaseModel):
+class GatewayCreate(BaseModel):
     name: Optional[str] = None
-    address: str = Field(..., description="Gateway address: IP:Port or local profile path")
+    address: str = Field(..., description="Gateway address: IP:Port or hostname:Port")
     api_key: Optional[str] = Field(None, description="Gateway API key (optional)")
-    mode: str = Field("http", description="Communication mode: http or local")
-    profile_name: Optional[str] = Field(None, description="Local profile name")
 
 
-class MachineUpdate(BaseModel):
+class GatewayUpdate(BaseModel):
     name: Optional[str] = None
     api_key: Optional[str] = None
 
 
-class MachineResponse(BaseModel):
+class GatewayResponse(BaseModel):
     id: str
     name: Optional[str]
     address: str
     api_key: Optional[str]
-    mode: str
-    profile_name: Optional[str]
+    status: str
+    last_seen: Optional[int]
     created_at: int
+    profile_count: int = 0
+    agent_count: int = 0
 
     class Config:
         from_attributes = True

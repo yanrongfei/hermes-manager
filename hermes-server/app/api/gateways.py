@@ -1,25 +1,23 @@
-"""
-Gateway Management and Proxy API.
-
-This module provides:
-1. CRUD for user-configured Gateway connections
-2. Proxy endpoints to forward requests to Hermes Gateway
-"""
+"""Gateway Management and Proxy API."""
 
 import httpx
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from app.database import get_db
 from app.core.deps import get_current_user
 from app.core.errors import AppException, ErrorCode
-from app.models.machine import Machine
-from app.schemas.machine import MachineCreate, MachineUpdate, MachineResponse
+from app.models.gateway import Gateway
+from app.models.profile import Profile
+from app.models.agent import Agent
+from app.schemas.gateway import GatewayCreate, GatewayUpdate, GatewayResponse
+from app.schemas.profile import ProfileResponse, ProfileUpdate
 from app.services.gateway_client import GatewayClient
+from app.services.gateway_channel import GatewayChannel
+from app.services.gateway_sync import GatewaySyncService
 from app.services.gateway_discovery import scan_local_gateways
 from app.services.local_profile_scanner import scan_local_profiles
-from app.services.gateway_channel import GatewayChannel
 from app.config import get_settings
 
 settings = get_settings()
@@ -28,192 +26,303 @@ router = APIRouter(tags=["gateways"])
 
 # ── Gateway CRUD ─────────────────────────────────────────────────
 
-@router.get("/gateways", response_model=List[MachineResponse])
+@router.get("/gateways", response_model=List[GatewayResponse])
 async def list_gateways(
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Machine).where(Machine.user_id == current_user.id)
+        select(Gateway).where(Gateway.user_id == current_user.id)
     )
-    machines = list(result.scalars().all())
-    return [_machine_to_response(m) for m in machines]
+    gateways = list(result.scalars().all())
+
+    response = []
+    for gw in gateways:
+        p_count = await _count_profiles(db, gw.id)
+        a_count = await _count_agents(db, gw.id)
+        response.append(GatewayResponse(
+            id=gw.id,
+            name=gw.name,
+            address=gw.address,
+            api_key=gw.api_key,
+            status=gw.status or "unknown",
+            last_seen=gw.last_seen,
+            created_at=gw.created_at,
+            profile_count=p_count,
+            agent_count=a_count,
+        ))
+    return response
 
 
 @router.get("/gateways/discover", response_model=List[dict])
 async def discover_gateways(
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Machine).where(Machine.user_id == current_user.id)
+        select(Gateway).where(Gateway.user_id == current_user.id)
     )
-    existing_machines = list(result.scalars().all())
-    existing_addresses = {m.address for m in existing_machines}
-    existing_profiles = {m.profile_name for m in existing_machines if m.profile_name}
+    existing = list(result.scalars().all())
+    existing_addresses = {g.address for g in existing}
 
-    # HTTP gateway discovery
     http_gateways = await scan_local_gateways(exclude_addresses=existing_addresses)
 
-    # Local profile discovery — also enriches HTTP results with api_key
     local_profiles = scan_local_profiles()
     local_api_keys: dict[str, str] = {}
     for p in local_profiles:
         if p.get("api_key"):
             local_api_keys[p["address"]] = p["api_key"]
 
-    # Enrich HTTP results with api_key from local profiles
     for g in http_gateways:
         addr = g.get("address", "")
         if not g.get("api_key") and addr in local_api_keys:
             g["api_key"] = local_api_keys[addr]
 
-    # Track addresses already found by HTTP scan to avoid duplicates
     seen_addresses = {g["address"] for g in http_gateways}
 
     local_results = []
     for p in local_profiles:
-        if p["profile_name"] not in existing_profiles:
-            # Skip if HTTP scan already found this address
-            if p["address"] in seen_addresses:
-                continue
+        if p["address"] not in existing_addresses and p["address"] not in seen_addresses:
             seen_addresses.add(p["address"])
             local_results.append({
                 "profile_name": p["profile_name"],
                 "name": p.get("name", p["profile_name"]),
                 "address": p["address"],
-                "mode": p["mode"],
                 "model": p.get("model", ""),
                 "provider": p.get("provider", ""),
                 "online": p.get("online", False),
                 "active": p.get("active", False),
-                "api_server_connected": p.get("api_server_connected", False),
                 "api_key": p.get("api_key", ""),
             })
 
     return http_gateways + local_results
 
 
-@router.post("/gateways", response_model=MachineResponse, status_code=201)
+@router.post("/gateways", response_model=GatewayResponse, status_code=201)
 async def create_gateway(
-    data: MachineCreate,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    data: GatewayCreate,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    gateway = GatewayClient(data.address, api_key=data.api_key)
-    is_healthy = await gateway.health_check()
-
-    if is_healthy and data.api_key:
-        # Verify the API key actually works by checking /v1/models
-        try:
-            models = await gateway.list_agents()
-            if not models:
-                # /v1/models returned empty — key might be wrong
-                print(f"[Gateway] {data.address} health OK but /v1/models returned empty, key may be invalid")
-        except Exception:
-            pass
-
-    await gateway.close()
-
-    # Local mode doesn't require HTTP health check
-    if data.mode == "local" and not is_healthy:
-        is_healthy = True
+    client = GatewayClient(data.address, api_key=data.api_key)
+    is_healthy = await client.health_check()
+    await client.close()
 
     if not is_healthy:
         raise AppException(ErrorCode.GATEWAY_UNREACHABLE, f"网关 {data.address} 无法连接", status_code=400)
 
-    machine = Machine(
+    now = int(__import__("datetime").datetime.utcnow().timestamp())
+    gateway = Gateway(
         user_id=current_user.id,
         name=data.name,
         address=data.address,
         api_key=data.api_key,
-        mode=data.mode,
-        profile_name=data.profile_name,
+        status="online",
+        last_seen=now,
     )
-    db.add(machine)
+    db.add(gateway)
     await db.commit()
-    await db.refresh(machine)
-    return _machine_to_response(machine)
+    await db.refresh(gateway)
+
+    # Auto-sync on first add
+    sync_service = GatewaySyncService(db)
+    await sync_service.sync_gateway(gateway.id, current_user.id)
+
+    await db.refresh(gateway)
+    p_count = await _count_profiles(db, gateway.id)
+    a_count = await _count_agents(db, gateway.id)
+    return GatewayResponse(
+        id=gateway.id, name=gateway.name, address=gateway.address,
+        api_key=gateway.api_key, status=gateway.status or "unknown",
+        last_seen=gateway.last_seen, created_at=gateway.created_at,
+        profile_count=p_count, agent_count=a_count,
+    )
 
 
-@router.get("/gateways/{gateway_id}", response_model=MachineResponse)
+@router.get("/gateways/{gateway_id}", response_model=GatewayResponse)
 async def get_gateway(
     gateway_id: str,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    machine = await _get_user_gateway(db, gateway_id, current_user.id)
-    if not machine:
+    gw = await _get_user_gateway(db, gateway_id, current_user.id)
+    if not gw:
         raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
-    return _machine_to_response(machine)
+    p_count = await _count_profiles(db, gw.id)
+    a_count = await _count_agents(db, gw.id)
+    return GatewayResponse(
+        id=gw.id, name=gw.name, address=gw.address,
+        api_key=gw.api_key, status=gw.status or "unknown",
+        last_seen=gw.last_seen, created_at=gw.created_at,
+        profile_count=p_count, agent_count=a_count,
+    )
+
+
+@router.patch("/gateways/{gateway_id}", response_model=GatewayResponse)
+async def update_gateway(
+    gateway_id: str,
+    data: GatewayUpdate,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    gw = await _get_user_gateway(db, gateway_id, current_user.id)
+    if not gw:
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
+    if data.name is not None:
+        gw.name = data.name
+    if data.api_key is not None:
+        gw.api_key = data.api_key
+    await db.commit()
+    await db.refresh(gw)
+    p_count = await _count_profiles(db, gw.id)
+    a_count = await _count_agents(db, gw.id)
+    return GatewayResponse(
+        id=gw.id, name=gw.name, address=gw.address,
+        api_key=gw.api_key, status=gw.status or "unknown",
+        last_seen=gw.last_seen, created_at=gw.created_at,
+        profile_count=p_count, agent_count=a_count,
+    )
 
 
 @router.delete("/gateways/{gateway_id}", status_code=204)
 async def delete_gateway(
     gateway_id: str,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    machine = await _get_user_gateway(db, gateway_id, current_user.id)
-    if not machine:
+    gw = await _get_user_gateway(db, gateway_id, current_user.id)
+    if not gw:
         raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
-    await db.delete(machine)
+    await db.delete(gw)
     await db.commit()
 
 
 @router.post("/gateways/{gateway_id}/test", response_model=dict)
 async def test_gateway(
     gateway_id: str,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    machine = await _get_user_gateway(db, gateway_id, current_user.id)
-    if not machine:
-        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
-
-    channel = GatewayChannel(machine)
-    try:
-        is_healthy = await channel.health_check()
-        return {"gateway_id": gateway_id, "online": is_healthy, "mode": channel.active_mode}
-    finally:
-        await channel.close()
-
-
-@router.patch("/gateways/{gateway_id}", response_model=MachineResponse)
-async def update_gateway(
-    gateway_id: str,
-    data: MachineUpdate,
-    current_user = Depends(get_current_user),
+    current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    machine = await _get_user_gateway(db, gateway_id, current_user.id)
-    if not machine:
+    gw = await _get_user_gateway(db, gateway_id, current_user.id)
+    if not gw:
         raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
-    if data.name is not None:
-        machine.name = data.name
-    if data.api_key is not None:
-        machine.api_key = data.api_key
-    await db.commit()
-    await db.refresh(machine)
-    return _machine_to_response(machine)
-
-
-@router.get("/gateways/{gateway_id}/agents", response_model=List[dict])
-async def discover_agents(
-    gateway_id: str,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    machine = await _get_user_gateway(db, gateway_id, current_user.id)
-    if not machine:
-        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
-
-    channel = GatewayChannel(machine)
+    channel = GatewayChannel(gw)
     try:
-        agents = await channel.list_agents()
-        return agents
+        is_healthy = await channel.health_check()
+        gw.status = "online" if is_healthy else "offline"
+        if is_healthy:
+            import datetime
+            gw.last_seen = int(datetime.datetime.utcnow().timestamp())
+        await db.commit()
+        return {"gateway_id": gateway_id, "online": is_healthy}
     finally:
         await channel.close()
+
+
+@router.post("/gateways/{gateway_id}/sync", response_model=dict)
+async def sync_gateway(
+    gateway_id: str,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    gw = await _get_user_gateway(db, gateway_id, current_user.id)
+    if not gw:
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
+    sync_service = GatewaySyncService(db)
+    return await sync_service.sync_gateway(gateway_id, current_user.id)
+
+
+@router.get("/gateways/{gateway_id}/profiles", response_model=List[ProfileResponse])
+async def list_gateway_profiles(
+    gateway_id: str,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    gw = await _get_user_gateway(db, gateway_id, current_user.id)
+    if not gw:
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
+
+    result = await db.execute(
+        select(Profile).where(Profile.gateway_id == gateway_id)
+    )
+    profiles = list(result.scalars().all())
+
+    response = []
+    for p in profiles:
+        a_count = await _count_profile_agents(db, p.id)
+        response.append(ProfileResponse(
+            id=p.id, gateway_id=p.gateway_id, remote_name=p.remote_name,
+            alias=p.alias, model=p.model, provider=p.provider,
+            skills=p.skills, description=p.description,
+            synced_at=p.synced_at, created_at=p.created_at,
+            agent_count=a_count,
+        ))
+    return response
+
+
+# ── Profile endpoints ────────────────────────────────────────────
+
+@router.get("/profiles/{profile_id}", response_model=ProfileResponse)
+async def get_profile(
+    profile_id: str,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Profile).where(Profile.id == profile_id)
+    )
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "Profile 不存在", status_code=404)
+
+    # Verify ownership
+    gw_result = await db.execute(
+        select(Gateway).where(Gateway.id == profile.gateway_id, Gateway.user_id == current_user.id)
+    )
+    if not gw_result.scalar_one_or_none():
+        raise AppException(ErrorCode.RESOURCE_FORBIDDEN, "无权访问该资源", status_code=403)
+
+    a_count = await _count_profile_agents(db, profile.id)
+    return ProfileResponse(
+        id=profile.id, gateway_id=profile.gateway_id, remote_name=profile.remote_name,
+        alias=profile.alias, model=profile.model, provider=profile.provider,
+        skills=profile.skills, description=profile.description,
+        synced_at=profile.synced_at, created_at=profile.created_at,
+        agent_count=a_count,
+    )
+
+
+@router.patch("/profiles/{profile_id}", response_model=ProfileResponse)
+async def update_profile(
+    profile_id: str,
+    data: ProfileUpdate,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Profile).where(Profile.id == profile_id))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "Profile 不存在", status_code=404)
+
+    gw_result = await db.execute(
+        select(Gateway).where(Gateway.id == profile.gateway_id, Gateway.user_id == current_user.id)
+    )
+    if not gw_result.scalar_one_or_none():
+        raise AppException(ErrorCode.RESOURCE_FORBIDDEN, "无权访问该资源", status_code=403)
+
+    if data.alias is not None:
+        profile.alias = data.alias
+    await db.commit()
+    await db.refresh(profile)
+
+    a_count = await _count_profile_agents(db, profile.id)
+    return ProfileResponse(
+        id=profile.id, gateway_id=profile.gateway_id, remote_name=profile.remote_name,
+        alias=profile.alias, model=profile.model, provider=profile.provider,
+        skills=profile.skills, description=profile.description,
+        synced_at=profile.synced_at, created_at=profile.created_at,
+        agent_count=a_count,
+    )
 
 
 # ── Gateway Proxy ───────────────────────────────────────────────
@@ -222,15 +331,15 @@ async def discover_agents(
 async def proxy_to_gateway(
     path: str,
     request: Request,
-    current_user = Depends(get_current_user),
+    current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     gateway_id: Optional[str] = Query(None),
 ):
     if gateway_id:
-        machine = await _get_user_gateway(db, gateway_id, current_user.id)
-        if not machine:
+        gw = await _get_user_gateway(db, gateway_id, current_user.id)
+        if not gw:
             raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "网关不存在", status_code=404)
-        gateway_url = machine.address
+        gateway_url = gw.address
     else:
         gateway_url = settings.DEFAULT_GATEWAY_URL
 
@@ -259,25 +368,33 @@ async def proxy_to_gateway(
     )
 
 
-# ── Helpers ───────────────────────────────────────────────────
+# ── Helpers ─────────────────────────────────────────────────────
 
-async def _get_user_gateway(db: AsyncSession, gateway_id: str, user_id: str) -> Optional[Machine]:
+async def _get_user_gateway(db: AsyncSession, gateway_id: str, user_id: str) -> Optional[Gateway]:
     result = await db.execute(
-        select(Machine).where(
-            Machine.id == gateway_id,
-            Machine.user_id == user_id
-        )
+        select(Gateway).where(Gateway.id == gateway_id, Gateway.user_id == user_id)
     )
     return result.scalar_one_or_none()
 
 
-def _machine_to_response(machine: Machine) -> MachineResponse:
-    return MachineResponse(
-        id=machine.id,
-        name=machine.name,
-        address=machine.address,
-        api_key=machine.api_key,
-        mode=machine.mode or "http",
-        profile_name=machine.profile_name,
-        created_at=machine.created_at,
+async def _count_profiles(db: AsyncSession, gateway_id: str) -> int:
+    result = await db.execute(
+        select(func.count(Profile.id)).where(Profile.gateway_id == gateway_id)
     )
+    return result.scalar() or 0
+
+
+async def _count_agents(db: AsyncSession, gateway_id: str) -> int:
+    result = await db.execute(
+        select(func.count(Agent.id))
+        .join(Profile)
+        .where(Profile.gateway_id == gateway_id)
+    )
+    return result.scalar() or 0
+
+
+async def _count_profile_agents(db: AsyncSession, profile_id: str) -> int:
+    result = await db.execute(
+        select(func.count(Agent.id)).where(Agent.profile_id == profile_id)
+    )
+    return result.scalar() or 0

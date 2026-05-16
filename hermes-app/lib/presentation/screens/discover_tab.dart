@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import 'machines_screen.dart';
+import 'gateways_screen.dart';
+import 'agents_directory_screen.dart';
 import 'skills_screen.dart';
 import 'plugins_screen.dart';
 import 'models_screen.dart';
@@ -19,27 +19,24 @@ class DiscoverTab extends StatelessWidget {
       ),
       body: ListView(
         children: [
-          _SectionHeader(title: '连接'),
+          const _SectionHeader(title: '连接'),
           _DiscoverTile(
             icon: Icons.dns_outlined,
             title: 'Gateway 管理',
-            subtitle: '管理远程 Gateway 连接',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const MachinesScreen()),
-            ),
+            subtitle: '管理 Hermes 网关连接',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GatewaysScreen())),
           ),
           _DiscoverTile(
             icon: Icons.smart_toy,
-            title: 'Agent 管理',
-            subtitle: '查看和管理可用 Agent',
+            title: 'Agent 目录',
+            subtitle: '浏览可用 AI 助手',
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const MachinesScreen()),
+              MaterialPageRoute(builder: (_) => const AgentsDirectoryScreen()),
             ),
           ),
           const SizedBox(height: 8),
-          _SectionHeader(title: 'AI 资源'),
+          const _SectionHeader(title: 'AI 资源'),
           _DiscoverTile(
             icon: Icons.psychology_outlined,
             title: '技能',
@@ -68,7 +65,7 @@ class DiscoverTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          _SectionHeader(title: '工具'),
+          const _SectionHeader(title: '工具'),
           _DiscoverTile(
             icon: Icons.schedule,
             title: '定时任务',

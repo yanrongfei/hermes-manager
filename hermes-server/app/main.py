@@ -12,11 +12,10 @@ from app.core.errors import AppException
 from app.core.handlers import app_exception_handler, http_exception_handler, validation_exception_handler, generic_exception_handler
 from app.api.auth import router as auth_router
 from app.api.rooms import router as rooms_router
-from app.api.machines import router as machines_router
 from app.api.gateways import router as gateways_router
 from app.api.agents import router as agents_router
 from app.api.ws import router as ws_router
-from app.models import User, Room, RoomMember, Message, Machine, Agent, RoomAgent
+from app.models import User, Room, RoomMember, Message, Gateway, Profile, Agent, RoomAgent
 
 settings = get_settings()
 logger = logging.getLogger("hermes")
@@ -71,7 +70,6 @@ app.add_exception_handler(Exception, generic_exception_handler)
 
 app.include_router(auth_router)
 app.include_router(rooms_router)
-app.include_router(machines_router)
 app.include_router(gateways_router)
 app.include_router(agents_router)
 app.include_router(ws_router)

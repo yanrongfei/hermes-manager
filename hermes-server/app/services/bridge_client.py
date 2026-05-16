@@ -134,38 +134,32 @@ class BridgeClient:
 
 
 async def list_local_agents(profile_name: Optional[str] = None) -> list[dict[str, Any]]:
-    """Discover local agents by reading profile config.
+    """Discover local agents from all hermes profiles via CLI or config.
 
-    For local profiles without api_server, we extract agent info from config.yaml.
+    Returns one agent entry per profile.
     """
     import yaml
-    from app.services.local_profile_scanner import _hermes_home, _read_yaml
+    from app.services.local_profile_scanner import _hermes_home, _read_yaml, scan_local_profiles
 
-    home = _hermes_home()
-
-    if profile_name and profile_name != "default":
-        config_path = home / "profiles" / profile_name / "config.yaml"
-    else:
-        config_path = home / "config.yaml"
-
-    cfg = _read_yaml(config_path)
-    if not cfg:
+    profiles = scan_local_profiles()
+    if not profiles:
         return []
 
-    model_cfg = cfg.get("model") or {}
-    if isinstance(model_cfg, str):
-        model_name = model_cfg
-    else:
-        model_name = model_cfg.get("default", "")
+    results = []
+    for p in profiles:
+        model = p.get("model", "Hermes")
+        provider = p.get("provider", "")
+        desc_parts = [f"Profile: {p['profile_name']}"]
+        if model:
+            desc_parts.append(f"Model: {model}")
+        if provider:
+            desc_parts.append(f"Provider: {provider}")
 
-    if not model_name:
-        return []
+        results.append({
+            "id": p["profile_name"],
+            "name": p["profile_name"],
+            "description": " · ".join(desc_parts),
+            "remote_id": p["profile_name"],
+        })
 
-    return [
-        {
-            "id": model_name,
-            "name": model_name,
-            "description": f"Local profile: {profile_name or 'default'}",
-            "remote_id": model_name,
-        }
-    ]
+    return results

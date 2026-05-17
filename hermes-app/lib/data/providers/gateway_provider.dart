@@ -60,6 +60,14 @@ class GatewaysNotifier extends StateNotifier<AsyncValue<List<Gateway>>> {
     }
   }
 
+  Future<List<GatewayStatus>> fetchGatewayStatus() async {
+    final dio = _ref.read(dioProvider);
+    final response = await dio.get('/gateways/status');
+    return (response.data as List)
+        .map((json) => GatewayStatus.fromJson(json))
+        .toList();
+  }
+
   Future<void> addGateway(String address, {String? name, String? apiKey}) async {
     final dio = _ref.read(dioProvider);
     await dio.post('/gateways', data: {
@@ -125,6 +133,12 @@ class GatewaysNotifier extends StateNotifier<AsyncValue<List<Gateway>>> {
       _isScanning = false;
       state = state;
     }
+  }
+
+  Future<Map<String, dynamic>> stopGateway(String profile) async {
+    final dio = _ref.read(dioProvider);
+    final response = await dio.post('/gateways/stop', queryParameters: {'profile': profile});
+    return response.data as Map<String, dynamic>;
   }
 }
 

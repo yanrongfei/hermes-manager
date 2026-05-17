@@ -37,3 +37,32 @@ class Gateway {
     );
   }
 }
+
+class GatewayStatus {
+  final String profile;
+  final String host;
+  final int port;
+  final String url;
+  final bool running;
+  final int? pid;
+
+  GatewayStatus({
+    required this.profile,
+    required this.host,
+    required this.port,
+    required this.url,
+    required this.running,
+    this.pid,
+  });
+
+  factory GatewayStatus.fromJson(Map<String, dynamic> json) {
+    return GatewayStatus(
+      profile: json['profile'] as String? ?? '',
+      host: json['host'] as String? ?? '127.0.0.1',
+      port: json['port'] as int? ?? 8642,
+      url: json['url'] as String? ?? '',
+      running: json['running'] as bool? ?? false,
+      pid: json['pid'] as int?,
+    );
+  }
+}

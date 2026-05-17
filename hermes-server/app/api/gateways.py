@@ -54,6 +54,126 @@ async def list_gateways(
     return response
 
 
+@router.post("/gateways/stop", response_model=dict)
+async def stop_gateway(
+    current_user=Depends(get_current_user),
+    profile: str = Query(..., description="Profile name to stop"),
+):
+    """Stop a local gateway process by profile name."""
+    import os
+    import signal
+    import time
+    import json
+    from pathlib import Path
+
+    home = Path.home() / ".hermes"
+    profile_dir = home if profile == "default" else home / "profiles" / profile
+    pid_file = profile_dir / "gateway.pid"
+    state_file = profile_dir / "gateway_state.json"
+
+    pid = None
+    running = False
+
+    # Read PID from gateway.pid (JSON format: {"pid": 123})
+    if pid_file.exists():
+        try:
+            data = json.loads(pid_file.read_text().strip())
+            pid = data.get("pid")
+            if isinstance(pid, str):
+                pid = int(pid) if pid.isdigit() else None
+        except Exception:
+            pass
+
+    # Fallback to gateway_state.json
+    if not pid and state_file.exists():
+        try:
+            data = json.loads(state_file.read_text().strip())
+            if data.get("gateway_state") in ("running", "starting"):
+                pid = data.get("pid")
+                if isinstance(pid, str):
+                    pid = int(pid) if pid.isdigit() else None
+        except Exception:
+            pass
+
+    # Verify process is alive
+    if pid:
+        try:
+            os.kill(pid, 0)
+            running = True
+        except OSError:
+            pid = None
+            running = False
+
+    if not running or not pid:
+        return {"success": True, "message": f"Gateway for profile '{profile}' is not running"}
+
+    # Try hermes gateway stop CLI first
+    hermes_bin = None
+    for candidate in [
+        Path.home() / ".local" / "bin" / "hermes",
+        Path("/opt/hermes/bin/hermes"),
+        Path("/usr/local/bin/hermes"),
+    ]:
+        if candidate.exists():
+            hermes_bin = str(candidate)
+            break
+
+    if hermes_bin:
+        try:
+            import subprocess
+            env = os.environ.copy()
+            env["HERMES_HOME"] = str(profile_dir)
+            subprocess.run(
+                [hermes_bin, "gateway", "stop"],
+                capture_output=True,
+                timeout=15,
+                env=env,
+            )
+        except Exception:
+            pass
+
+    # Wait briefly for graceful shutdown
+    try:
+        for _ in range(30):
+            try:
+                os.kill(pid, 0)
+                time.sleep(0.1)
+            except OSError:
+                break
+        else:
+            os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+
+    return {"success": True, "message": f"Gateway for profile '{profile}' stopped", "pid": pid}
+
+
+@router.get("/gateways/status", response_model=List[dict])
+async def list_gateway_status(
+    current_user=Depends(get_current_user),
+):
+    """List all local profile gateway statuses.
+
+    Returns profile name, IP/port, running status, PID, and stop capability.
+    """
+    from app.services.local_profile_scanner import scan_local_profiles
+
+    profiles = scan_local_profiles()
+    return [
+        {
+            "profile": p.get("profile_name", p.get("name", "")),
+            "host": p.get("gateway_host", "127.0.0.1"),
+            "port": p.get("gateway_port", 8642),
+            "url": p.get("address", ""),
+            "running": p.get("online", False) or p.get("running", False),
+            "pid": p.get("pid"),
+            "mode": p.get("mode", "local"),
+            "api_server_connected": p.get("api_server_connected", False),
+        }
+        for p in profiles
+    ]
+
+
 @router.get("/gateways/discover", response_model=List[dict])
 async def discover_gateways(
     current_user=Depends(get_current_user),

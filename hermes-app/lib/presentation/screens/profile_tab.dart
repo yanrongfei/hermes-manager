@@ -87,6 +87,12 @@ class ProfileTab extends ConsumerWidget {
           // Data section
           _SectionHeader(title: '数据'),
           _SettingsTile(
+            icon: Icons.dns_outlined,
+            title: 'Gateway 管理',
+            subtitle: '管理已添加的 Gateway',
+            onTap: () => context.push('/gateways'),
+          ),
+          _SettingsTile(
             icon: Icons.analytics_outlined,
             title: '用量统计',
             subtitle: 'Token 使用量、成本估算',

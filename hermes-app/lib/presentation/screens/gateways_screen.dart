@@ -10,70 +10,54 @@ class GatewaysScreen extends ConsumerStatefulWidget {
   ConsumerState<GatewaysScreen> createState() => _GatewaysScreenState();
 }
 
-class _GatewaysScreenState extends ConsumerState<GatewaysScreen> {
+class _GatewaysScreenState extends ConsumerState<GatewaysScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final gatewaysAsync = ref.watch(gatewaysNotifierProvider);
-    final notifier = ref.read(gatewaysNotifierProvider.notifier);
-
     return Scaffold(
       backgroundColor: const Color(0xFF212121),
       appBar: AppBar(
         backgroundColor: const Color(0xFF2A2A2A),
         title: const Text('Gateway 管理', style: TextStyle(color: Color(0xFFECECEC))),
         iconTheme: const IconThemeData(color: Color(0xFFECECEC)),
-      ),
-      body: gatewaysAsync.when(
-        data: (gateways) => RefreshIndicator(
-          onRefresh: () => notifier.loadGateways(),
-          child: ListView(
-            padding: const EdgeInsets.all(12),
-            children: [
-              _ScanSection(
-                gateways: gateways,
-                notifier: notifier,
-              ),
-              const SizedBox(height: 8),
-              if (gateways.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 32),
-                  child: Column(
-                    children: [
-                      Icon(Icons.dns_outlined, size: 48, color: Colors.grey[700]),
-                      const SizedBox(height: 12),
-                      Text('暂无 Gateway', style: TextStyle(color: Colors.grey[500], fontSize: 15)),
-                      const SizedBox(height: 4),
-                      Text('点击上方「扫描」发现 Gateway', style: TextStyle(color: Colors.grey[700], fontSize: 13)),
-                    ],
-                  ),
-                )
-              else
-                ...gateways.map((gw) => _GatewayCard(gateway: gw, notifier: notifier)),
-            ],
-          ),
-        ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.wifi_off, size: 48, color: Colors.grey[600]),
-              const SizedBox(height: 12),
-              Text('加载失败，请检查网络', style: TextStyle(color: Colors.grey[500])),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => notifier.loadGateways(),
-                child: const Text('重试'),
-              ),
-            ],
-          ),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: const Color(0xFF5856D6),
+          labelColor: const Color(0xFF5856D6),
+          unselectedLabelColor: Colors.grey,
+          tabs: const [
+            Tab(text: '管理'),
+            Tab(text: '本地'),
+          ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF5856D6),
-        onPressed: () => _showAddGatewayDialog(context, ref),
-        child: const Icon(Icons.add, color: Colors.white),
+      body: TabBarView(
+        controller: _tabController,
+        children: const [
+          _ManagedGatewaysTab(),
+          _LocalGatewaysTab(),
+        ],
       ),
+      floatingActionButton: _tabController.index == 0
+          ? FloatingActionButton(
+              backgroundColor: const Color(0xFF5856D6),
+              onPressed: () => _showAddGatewayDialog(context, ref),
+              child: const Icon(Icons.add, color: Colors.white),
+            )
+          : null,
     );
   }
 
@@ -161,6 +145,290 @@ class _GatewaysScreenState extends ConsumerState<GatewaysScreen> {
         ),
       ),
     );
+  }
+}
+
+class _ManagedGatewaysTab extends ConsumerWidget {
+  const _ManagedGatewaysTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final gatewaysAsync = ref.watch(gatewaysNotifierProvider);
+    final notifier = ref.read(gatewaysNotifierProvider.notifier);
+
+    return gatewaysAsync.when(
+      data: (gateways) => RefreshIndicator(
+        onRefresh: () => notifier.loadGateways(),
+        child: ListView(
+          padding: const EdgeInsets.all(12),
+          children: [
+            _ScanSection(gateways: gateways, notifier: notifier),
+            const SizedBox(height: 8),
+            if (gateways.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 32),
+                child: Column(
+                  children: [
+                    Icon(Icons.dns_outlined, size: 48, color: Colors.grey[700]),
+                    const SizedBox(height: 12),
+                    Text('暂无 Gateway', style: TextStyle(color: Colors.grey[500], fontSize: 15)),
+                    const SizedBox(height: 4),
+                    Text('点击上方「扫描」发现 Gateway', style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+                  ],
+                ),
+              )
+            else
+              ...gateways.map((gw) => _GatewayCard(gateway: gw, notifier: notifier)),
+          ],
+        ),
+      ),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.wifi_off, size: 48, color: Colors.grey[600]),
+            const SizedBox(height: 12),
+            Text('加载失败，请检查网络', style: TextStyle(color: Colors.grey[500])),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => notifier.loadGateways(),
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LocalGatewaysTab extends ConsumerStatefulWidget {
+  const _LocalGatewaysTab();
+
+  @override
+  ConsumerState<_LocalGatewaysTab> createState() => _LocalGatewaysTabState();
+}
+
+class _LocalGatewaysTabState extends ConsumerState<_LocalGatewaysTab> {
+  List<GatewayStatus> _statuses = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchStatuses();
+  }
+
+  Future<void> _fetchStatuses() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final notifier = ref.read(gatewaysNotifierProvider.notifier);
+      final statuses = await notifier.fetchGatewayStatus();
+      setState(() { _statuses = statuses; _loading = false; });
+    } catch (e) {
+      setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: Colors.grey[600]),
+            const SizedBox(height: 12),
+            Text('加载失败', style: TextStyle(color: Colors.grey[500])),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _fetchStatuses,
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_statuses.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.dns_outlined, size: 48, color: Colors.grey[700]),
+            const SizedBox(height: 12),
+            Text('未发现本地 Gateway', style: TextStyle(color: Colors.grey[500])),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _fetchStatuses,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: _statuses.length,
+        itemBuilder: (context, index) {
+          final gw = _statuses[index];
+          return _LocalGatewayCard(status: gw, onRefresh: _fetchStatuses);
+        },
+      ),
+    );
+  }
+}
+
+class _LocalGatewayCard extends ConsumerStatefulWidget {
+  final GatewayStatus status;
+  final VoidCallback onRefresh;
+
+  const _LocalGatewayCard({required this.status, required this.onRefresh});
+
+  @override
+  ConsumerState<_LocalGatewayCard> createState() => _LocalGatewayCardState();
+}
+
+class _LocalGatewayCardState extends ConsumerState<_LocalGatewayCard> {
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: const Color(0xFF2A2A2A),
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: widget.status.running
+                      ? const Color(0xFF34C759).withAlpha(40)
+                      : Colors.grey.withAlpha(40),
+                  child: Icon(
+                    Icons.dns,
+                    color: widget.status.running ? const Color(0xFF34C759) : Colors.grey,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.status.profile,
+                        style: const TextStyle(
+                          color: Color(0xFFECECEC),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${widget.status.host}:${widget.status.port}',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: widget.status.running
+                        ? const Color(0xFF34C759).withAlpha(30)
+                        : Colors.grey.withAlpha(30),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    widget.status.running ? 'running' : 'stopped',
+                    style: TextStyle(
+                      color: widget.status.running ? const Color(0xFF34C759) : Colors.grey,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (widget.status.pid != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'PID: ${widget.status.pid}',
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text(
+                  '${widget.status.profile}  ${widget.status.host}:${widget.status.port}  PID: ${widget.status.pid ?? "-"}  状态 ${widget.status.running ? "running" : "stopped"}',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                ),
+                const Spacer(),
+                if (widget.status.running)
+                  TextButton(
+                    onPressed: _stopGateway,
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFFF3B30),
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    ),
+                    child: const Text('关闭', style: TextStyle(fontSize: 13)),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _stopGateway() async {
+    final profile = widget.status.profile;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text('关闭 Gateway', style: TextStyle(color: Color(0xFFECECEC))),
+        content: Text('确定要关闭 $profile 吗？', style: const TextStyle(color: Color(0xFFECECEC))),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFFFF3B30)),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final notifier = ref.read(gatewaysNotifierProvider.notifier);
+      final result = await notifier.stopGateway(profile);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? '操作完成'),
+            backgroundColor: const Color(0xFF34C759),
+          ),
+        );
+        widget.onRefresh();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('关闭失败: $e'),
+            backgroundColor: const Color(0xFFFF3B30),
+          ),
+        );
+      }
+    }
   }
 }
 

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../data/models/message.dart';
 import '../../data/providers/chat_provider.dart';
+import '../../data/providers/room_provider.dart';
 import '../widgets/message_bubble.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -152,9 +154,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
         iconTheme: const IconThemeData(color: Color(0xFFECECEC)),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.person_add),
-            onPressed: () => _showInviteDialog(),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.grey),
+            color: const Color(0xFF3A3A3A),
+            onSelected: (value) {
+              if (value == 'invite') {
+                _showInviteDialog();
+              } else if (value == 'delete') {
+                _showDeleteConfirmation();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'invite',
+                child: Row(
+                  children: [
+                    Icon(Icons.person_add, color: Color(0xFFECECEC), size: 18),
+                    SizedBox(width: 12),
+                    Text('邀请成员', style: TextStyle(color: Color(0xFFECECEC))),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                    SizedBox(width: 12),
+                    Text('删除对话', style: TextStyle(color: Color(0xFFECECEC))),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -352,6 +383,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showDeleteConfirmation() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text('删除对话', style: TextStyle(color: Color(0xFFECECEC))),
+        content: const Text('确定要删除这个对话吗？', style: TextStyle(color: Color(0xFFECECEC))),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref.read(roomsProvider.notifier).deleteRoom(widget.roomId);
+              if (mounted) {
+                context.go('/home');
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
       ),
     );
   }

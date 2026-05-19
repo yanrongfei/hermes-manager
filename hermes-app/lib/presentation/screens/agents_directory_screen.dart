@@ -5,13 +5,37 @@ import '../../data/models/gateway.dart';
 import '../../data/providers/gateway_provider.dart';
 import '../../data/providers/room_provider.dart';
 
-class AgentsDirectoryScreen extends ConsumerWidget {
+class AgentsDirectoryScreen extends ConsumerStatefulWidget {
   const AgentsDirectoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final gatewaysAsync = ref.watch(gatewaysNotifierProvider);
+  ConsumerState<AgentsDirectoryScreen> createState() => _AgentsDirectoryScreenState();
+}
 
+class _AgentsDirectoryScreenState extends ConsumerState<AgentsDirectoryScreen> {
+  List<GatewayStatus> _agents = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchAgents();
+  }
+
+  Future<void> _fetchAgents() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final notifier = ref.read(gatewaysNotifierProvider.notifier);
+      final statuses = await notifier.fetchGatewayStatus();
+      setState(() { _agents = statuses; _loading = false; });
+    } catch (e) {
+      setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF212121),
       appBar: AppBar(
@@ -19,42 +43,42 @@ class AgentsDirectoryScreen extends ConsumerWidget {
         title: const Text('Agents', style: TextStyle(color: Color(0xFFECECEC))),
         iconTheme: const IconThemeData(color: Color(0xFFECECEC)),
       ),
-      body: gatewaysAsync.when(
-        data: (gateways) => gateways.isEmpty
-            ? Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.smart_toy_outlined, size: 64, color: Colors.grey[700]),
-                    const SizedBox(height: 16),
-                    Text('暂无 Agent', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
-                    const SizedBox(height: 8),
-                    Text('请先添加并同步 Gateway', style: TextStyle(color: Colors.grey[700], fontSize: 13)),
-                  ],
-                ),
-              )
-            : RefreshIndicator(
-                onRefresh: () async {
-                  ref.read(gatewaysNotifierProvider.notifier).loadGateways();
-                },
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: gateways.length,
-                  itemBuilder: (context, index) => _AgentCard(gateway: gateways[index]),
-                ),
-              ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline, size: 64, color: Colors.grey[600]),
-              const SizedBox(height: 16),
-              Text('加载失败，请稍后重试', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
-            ],
-          ),
-        ),
-      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.error_outline, size: 64, color: Colors.grey[600]),
+                      const SizedBox(height: 16),
+                      Text('加载失败，请稍后重试', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+                      const SizedBox(height: 8),
+                      TextButton(onPressed: _fetchAgents, child: const Text('重试')),
+                    ],
+                  ),
+                )
+              : _agents.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.smart_toy_outlined, size: 64, color: Colors.grey[700]),
+                          const SizedBox(height: 16),
+                          Text('暂无 Agent', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+                          const SizedBox(height: 8),
+                          Text('请先添加并同步 Gateway', style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _fetchAgents,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _agents.length,
+                        itemBuilder: (context, index) => _AgentCard(gateway: _agents[index]),
+                      ),
+                    ),
     );
   }
 }

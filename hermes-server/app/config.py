@@ -1,5 +1,33 @@
+import os
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+
+
+def _load_hermes_env():
+    """Auto-read ~/.hermes/.env for gateway config if not set in local .env."""
+    hermes_env = Path.home() / ".hermes" / ".env"
+    if not hermes_env.exists():
+        return
+    hermes_vars = {}
+    try:
+        for line in hermes_env.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            hermes_vars[key.strip()] = value.strip().strip("'\"")
+    except Exception:
+        return
+
+    # Prefer API_SERVER_KEY (gateway auth), fallback to HERMES_GATEWAY_TOKEN
+    if "DEFAULT_GATEWAY_API_KEY" not in os.environ:
+        key = hermes_vars.get("API_SERVER_KEY") or hermes_vars.get("HERMES_GATEWAY_TOKEN", "")
+        if key:
+            os.environ["DEFAULT_GATEWAY_API_KEY"] = key
+
+
+_load_hermes_env()
 
 
 class Settings(BaseSettings):
@@ -19,9 +47,6 @@ class Settings(BaseSettings):
     DEFAULT_GATEWAY_URL: str = "http://localhost:8642"
     DEFAULT_GATEWAY_API_KEY: str = ""
     DEFAULT_MODEL: str = "claude-sonnet-4-20250514"
-
-    # API key for authenticating with Hermes Gateway
-    API_SERVER_KEY: str = ""
 
     model_config = SettingsConfigDict(env_file=".env")
 

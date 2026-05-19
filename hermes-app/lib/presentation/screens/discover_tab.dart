@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
-import 'gateways_screen.dart';
-import 'agents_directory_screen.dart';
-import 'skills_screen.dart';
-import 'plugins_screen.dart';
-import 'models_screen.dart';
+import 'package:go_router/go_router.dart';
 
 class DiscoverTab extends StatelessWidget {
   const DiscoverTab({super.key});
@@ -24,16 +20,13 @@ class DiscoverTab extends StatelessWidget {
             icon: Icons.dns_outlined,
             title: 'Gateway 管理',
             subtitle: '管理 Hermes 网关连接',
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GatewaysScreen())),
+            onTap: () => context.push('/gateways'),
           ),
           _DiscoverTile(
             icon: Icons.smart_toy,
             title: 'Agent 目录',
             subtitle: '浏览可用 AI 助手',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AgentsDirectoryScreen()),
-            ),
+            onTap: () => context.push('/agents'),
           ),
           const SizedBox(height: 8),
           const _SectionHeader(title: 'AI 资源'),
@@ -41,28 +34,19 @@ class DiscoverTab extends StatelessWidget {
             icon: Icons.psychology_outlined,
             title: '技能',
             subtitle: '浏览可用 AI 技能',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SkillsScreen()),
-            ),
+            onTap: () => context.push('/skills'),
           ),
           _DiscoverTile(
             icon: Icons.extension_outlined,
             title: '插件',
             subtitle: '管理插件扩展',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const PluginsScreen()),
-            ),
+            onTap: () => context.push('/plugins'),
           ),
           _DiscoverTile(
             icon: Icons.model_training,
             title: '模型',
             subtitle: '查看可用 AI 模型',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ModelsScreen()),
-            ),
+            onTap: () => context.push('/models'),
           ),
           const SizedBox(height: 8),
           const _SectionHeader(title: '工具'),

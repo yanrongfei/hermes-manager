@@ -30,6 +30,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isTyping = false;
   bool _showMentionPicker = false;
   String _mentionQuery = '';
+  bool _showScrollBottom = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(() {
+      final show = _scrollController.hasClients &&
+          _scrollController.position.maxScrollExtent - _scrollController.offset > 200;
+      if (show != _showScrollBottom) setState(() => _showScrollBottom = show);
+    });
+  }
 
   @override
   void dispose() {
@@ -233,29 +244,53 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
           // Messages
           Expanded(
-            child: chatState.isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : chatState.messages.isEmpty
-                    ? Center(
-                        child: Text(
-                          '暂无消息\n发送消息开始对话',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                        ),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        itemCount: chatState.messages.length,
-                        itemBuilder: (context, index) {
-                          final message = chatState.messages[index];
-                          final toolCalls = chatState.toolCalls[message.id];
-                          return MessageBubble(
-                            message: message,
-                            toolCalls: toolCalls,
-                          );
-                        },
-                      ),
+            child: Stack(
+              children: [
+                chatState.isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : chatState.messages.isEmpty
+                        ? Center(
+                            child: Text(
+                              '暂无消息\n发送消息开始对话',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            itemCount: chatState.messages.length,
+                            itemBuilder: (context, index) {
+                              final message = chatState.messages[index];
+                              final toolCalls = chatState.toolCalls[message.id];
+                              final thinkingMs = chatState.thinkingStartedAt[message.id] != null
+                                  ? DateTime.now().millisecondsSinceEpoch - chatState.thinkingStartedAt[message.id]!
+                                  : null;
+                              return MessageBubble(
+                                message: message,
+                                toolCalls: toolCalls,
+                                thinkingDurationMs: message.isStreaming ? thinkingMs : null,
+                              );
+                            },
+                          ),
+                if (_showScrollBottom)
+                  Positioned(
+                    right: 16,
+                    bottom: 16,
+                    child: FloatingActionButton.small(
+                      backgroundColor: const Color(0xFF2A2A2A),
+                      onPressed: () {
+                        _scrollController.animateTo(
+                          _scrollController.position.maxScrollExtent,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                        );
+                      },
+                      child: Icon(Icons.keyboard_arrow_down, color: Colors.grey[400]),
+                    ),
+                  ),
+              ],
+            ),
           ),
 
           // @mention picker
@@ -284,18 +319,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       child: SafeArea(
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             IconButton(
               icon: const Icon(Icons.add, color: Color(0xFFA0A0A0)),
               onPressed: () => _showAttachmentSheet(),
             ),
-            Expanded(
+            Flexible(
               child: TextField(
                 controller: _messageController,
                 focusNode: _focusNode,
+                maxLines: 5,
+                minLines: 1,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
                 style: const TextStyle(color: Color(0xFFECECEC)),
                 decoration: InputDecoration(
-                  hintText: '输入消息或在群聊中@成员...',
+                  hintText: '输入消息...',
                   hintStyle: TextStyle(color: Colors.grey[600]),
                   filled: true,
                   fillColor: const Color(0xFF343541),
@@ -303,20 +343,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     borderRadius: BorderRadius.circular(24),
                     borderSide: BorderSide.none,
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 ),
                 onChanged: _onTextChanged,
-                onSubmitted: (_) => _sendMessage(),
               ),
             ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.mic, color: Color(0xFFA0A0A0)),
-              onPressed: () {},
-            ),
+            const SizedBox(width: 4),
             IconButton(
               icon: const Icon(Icons.send, color: Color(0xFF5856D6)),
               onPressed: _sendMessage,

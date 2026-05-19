@@ -6,6 +6,10 @@ import '../presentation/screens/register_screen.dart';
 import '../presentation/screens/home_screen.dart';
 import '../presentation/screens/chat_screen.dart';
 import '../presentation/screens/gateways_screen.dart';
+import '../presentation/screens/agents_directory_screen.dart';
+import '../presentation/screens/skills_screen.dart';
+import '../presentation/screens/plugins_screen.dart';
+import '../presentation/screens/models_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -30,6 +34,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/gateways',
         builder: (context, state) => const GatewaysScreen(),
+      ),
+      GoRoute(
+        path: '/agents',
+        builder: (context, state) => const AgentsDirectoryScreen(),
+      ),
+      GoRoute(
+        path: '/skills',
+        builder: (context, state) => const SkillsScreen(),
+      ),
+      GoRoute(
+        path: '/plugins',
+        builder: (context, state) => const PluginsScreen(),
+      ),
+      GoRoute(
+        path: '/models',
+        builder: (context, state) => const ModelsScreen(),
       ),
       GoRoute(
         path: '/chat/:roomId',

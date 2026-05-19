@@ -1,3 +1,43 @@
+class Gateway {
+  final String id;
+  final String? name;
+  final String address;
+  final String? apiKey;
+  final String status;
+  final int? lastSeen;
+  final int createdAt;
+  final int profileCount;
+  final int agentCount;
+
+  Gateway({
+    required this.id,
+    this.name,
+    required this.address,
+    this.apiKey,
+    this.status = 'unknown',
+    this.lastSeen,
+    required this.createdAt,
+    this.profileCount = 0,
+    this.agentCount = 0,
+  });
+
+  bool get isOnline => status == 'online';
+
+  factory Gateway.fromJson(Map<String, dynamic> json) {
+    return Gateway(
+      id: json['id'] as String,
+      name: json['name'] as String?,
+      address: json['address'] as String,
+      apiKey: json['api_key'] as String?,
+      status: json['status'] as String? ?? 'unknown',
+      lastSeen: json['last_seen'] as int?,
+      createdAt: json['created_at'] as int,
+      profileCount: json['profile_count'] as int? ?? 0,
+      agentCount: json['agent_count'] as int? ?? 0,
+    );
+  }
+}
+
 class GatewayStatus {
   final String profile;
   final String host;

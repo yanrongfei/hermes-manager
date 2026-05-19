@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Receive, Scope, Send
 from app.database import init_db, get_engine
 from app.config import get_settings
 from app.core.errors import AppException
@@ -36,24 +37,40 @@ app = FastAPI(
 )
 
 
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    request_id = str(uuid.uuid4())[:8]
-    request.state.request_id = request_id
-    start = time.time()
+class LogRequestsMiddleware:
+    """Pure ASGI middleware that logs HTTP requests and transparently passes WebSocket connections."""
 
-    logger.info(f"[{request_id}] --> {request.method} {request.url.path}")
+    def __init__(self, app: ASGIApp):
+        self.app = app
 
-    try:
-        response = await call_next(request)
-        duration = (time.time() - start) * 1000
-        logger.info(f"[{request_id}] <-- {response.status_code} ({duration:.0f}ms)")
-        response.headers["X-Request-ID"] = request_id
-        return response
-    except Exception as e:
-        duration = (time.time() - start) * 1000
-        logger.error(f"[{request_id}] <-- ERROR ({duration:.0f}ms) {type(e).__name__}: {e}")
-        raise
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request_id = str(uuid.uuid4())[:8]
+        path = scope.get("path", "")
+        method = scope.get("method", "")
+
+        start = time.time()
+        logger.info(f"[{request_id}] --> {method} {path}")
+
+        async def send_with_log(message):
+            if message["type"] == "http.response.start":
+                status_code = message.get("status", 0)
+                duration = (time.time() - start) * 1000
+                logger.info(f"[{request_id}] <-- {status_code} ({duration:.0f}ms)")
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_log)
+        except Exception as e:
+            duration = (time.time() - start) * 1000
+            logger.error(f"[{request_id}] <-- ERROR ({duration:.0f}ms) {type(e).__name__}: {e}")
+            raise
+
+
+app.add_middleware(LogRequestsMiddleware)
 
 
 app.add_middleware(

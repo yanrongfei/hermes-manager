@@ -87,7 +87,6 @@ async def _format_conversation_history(room_id: str, limit: int = 50) -> List[di
 
 async def _start_agent_runs(room_id: str, user_id: str, username: str, content: str):
     """Start agent runs based on room mode (broadcast/mention)."""
-    room_service = RoomService(None)
     async with get_session_maker()() as session:
         room = await session.execute(
             select(Room).where(Room.id == room_id)
@@ -107,48 +106,54 @@ async def _start_agent_runs(room_id: str, user_id: str, username: str, content: 
         if room.mode == "broadcast":
             targets = room_agents
         elif room.mode == "mention":
-            # For 1:1 chats with profile_id, auto-select the agent
             if room.profile_id:
+                # Try matching by profile FK first
                 targets = [a for a in room_agents if a.profile_id == room.profile_id]
+                # Fallback: if no agents in room, use profile_id as agent name directly
+                if not targets and not room_agents:
+                    targets = None  # signal: use profile_id directly
             else:
                 targets = [a for a in room_agents if a.name in mentioned]
         else:
             targets = []
 
-        if not targets:
+        # No targets found
+        if targets is not None and not targets:
             return
 
-        for agent in targets:
+        if targets is None:
+            # 1:1 chat with profile_id but no agent record — call gateway directly
+            agent_name = room.profile_id
+            agent_id = f"profile:{room.profile_id}"
+            description = ""
+
             msg_svc = MessageService(session)
-            # Create empty agent message (streaming)
             agent_msg = await msg_svc.create_message(
                 room_id=room_id,
-                sender_id=agent.id,
+                sender_id=agent_id,
                 sender_type="agent",
-                sender_name=agent.name,
+                sender_name=agent_name,
                 content="",
                 is_streaming=True,
             )
 
-            # Broadcast the new agent message
             await manager.send_to_room(room_id, "message", {
                 "id": agent_msg.id,
                 "roomId": room_id,
-                "senderId": agent.id,
+                "senderId": agent_id,
                 "senderType": "agent",
-                "senderName": agent.name,
+                "senderName": agent_name,
                 "content": "",
                 "contentType": "text",
                 "isStreaming": True,
                 "createdAt": agent_msg.created_at,
             })
 
-            # Start run executor
             executor = RunExecutor(
                 room_id=room_id,
                 message_id=agent_msg.id,
-                agent_id=agent.id,
-                agent_name=agent.name,
+                agent_id=agent_id,
+                agent_name=agent_name,
                 gateway=gateway,
             )
             if room_id not in active_executors:
@@ -157,9 +162,49 @@ async def _start_agent_runs(room_id: str, user_id: str, username: str, content: 
             asyncio.create_task(executor.execute(
                 user_message=content,
                 model=settings.DEFAULT_MODEL,
-                instructions=agent.description or "",
+                instructions=description,
                 history=history,
             ))
+        else:
+            for agent in targets:
+                msg_svc = MessageService(session)
+                agent_msg = await msg_svc.create_message(
+                    room_id=room_id,
+                    sender_id=agent.id,
+                    sender_type="agent",
+                    sender_name=agent.name,
+                    content="",
+                    is_streaming=True,
+                )
+
+                await manager.send_to_room(room_id, "message", {
+                    "id": agent_msg.id,
+                    "roomId": room_id,
+                    "senderId": agent.id,
+                    "senderType": "agent",
+                    "senderName": agent.name,
+                    "content": "",
+                    "contentType": "text",
+                    "isStreaming": True,
+                    "createdAt": agent_msg.created_at,
+                })
+
+                executor = RunExecutor(
+                    room_id=room_id,
+                    message_id=agent_msg.id,
+                    agent_id=agent.id,
+                    agent_name=agent.name,
+                    gateway=gateway,
+                )
+                if room_id not in active_executors:
+                    active_executors[room_id] = []
+                active_executors[room_id].append(executor)
+                asyncio.create_task(executor.execute(
+                    user_message=content,
+                    model=settings.DEFAULT_MODEL,
+                    instructions=agent.description or "",
+                    history=history,
+                ))
 
 
 # Import Room at module level for type annotation
@@ -185,6 +230,9 @@ async def websocket_chat(
         return
     user_id = payload.get("sub")
     username = payload.get("username", "User")
+
+    await websocket.accept()
+    logger.info(f"WebSocket accepted for user {username}")
 
     # Join room
     try:

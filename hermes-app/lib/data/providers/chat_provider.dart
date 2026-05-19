@@ -12,10 +12,11 @@ class ChatState {
   final bool isLoading;
   final bool isConnected;
   final String? error;
-  final Map<String, List<ToolCall>> toolCalls; // messageId -> toolCalls
-  final Set<String> runningAgents; // messageIds of agents that are running
-  final String? compressingStatus; // 'compressing' / null
+  final Map<String, List<ToolCall>> toolCalls;
+  final Set<String> runningAgents;
+  final String? compressingStatus;
   final int queueLength;
+  final Map<String, int> thinkingStartedAt; // messageId -> timestamp ms
 
   ChatState({
     this.messages = const [],
@@ -26,6 +27,7 @@ class ChatState {
     this.runningAgents = const {},
     this.compressingStatus,
     this.queueLength = 0,
+    this.thinkingStartedAt = const {},
   });
 
   ChatState copyWith({
@@ -37,6 +39,7 @@ class ChatState {
     Set<String>? runningAgents,
     String? compressingStatus,
     int? queueLength,
+    Map<String, int>? thinkingStartedAt,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -47,6 +50,7 @@ class ChatState {
       runningAgents: runningAgents ?? this.runningAgents,
       compressingStatus: compressingStatus ?? this.compressingStatus,
       queueLength: queueLength ?? this.queueLength,
+      thinkingStartedAt: thinkingStartedAt ?? this.thinkingStartedAt,
     );
   }
 }
@@ -58,7 +62,26 @@ class ChatNotifier extends StateNotifier<ChatState> {
   StreamSubscription? _subscription;
 
   ChatNotifier(this.roomId, this._ref) : super(ChatState()) {
-    _connect();
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _loadHistory();
+    await _connect();
+  }
+
+  Future<void> _loadHistory() async {
+    state = state.copyWith(isLoading: true);
+    try {
+      final dio = _ref.read(dioProvider);
+      final response = await dio.get('/rooms/$roomId/messages', queryParameters: {'limit': 50});
+      final data = response.data;
+      final List msgs = data['messages'] ?? [];
+      final messages = msgs.map((json) => Message.fromJson(json)).toList();
+      state = state.copyWith(messages: messages, isLoading: false);
+    } catch (_) {
+      state = state.copyWith(isLoading: false);
+    }
   }
 
   Future<void> _connect() async {
@@ -66,14 +89,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final token = await storage.get(AppConfig.accessTokenKey);
     if (token == null) return;
 
-    state = state.copyWith(isLoading: true);
-
     try {
       _channel = WebSocketChannel.connect(
         Uri.parse('${AppConfig.wsUrl}/ws/chat?token=$token'),
       );
 
-      // Join room
       _channel!.sink.add(jsonEncode({
         'event': 'join',
         'data': {'roomId': roomId},
@@ -82,12 +102,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _subscription = _channel!.stream.listen(
         (data) => _handleMessage(data),
         onError: (e) {
-          state = state.copyWith(error: e.toString(), isConnected: false);
+          state = state.copyWith(error: e.toString(), isConnected: false, isLoading: false);
         },
         onDone: () {
-          state = state.copyWith(isConnected: false);
+          state = state.copyWith(isConnected: false, isLoading: false);
         },
       );
+
+      state = state.copyWith(isConnected: true);
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
     }
@@ -127,17 +149,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
         _handleRunFailed(payload);
         break;
       case 'abort.started':
+        _handleAbortStarted(payload);
+        break;
       case 'abort.completed':
         _handleAbort(payload);
-        break;
-      case 'typing':
-        // Handled by UI if needed
-        break;
-      case 'stop_typing':
-        break;
-      case 'member_joined':
-        break;
-      case 'member_left':
         break;
       case 'context_status':
         state = state.copyWith(compressingStatus: payload['status'] as String?);
@@ -150,9 +165,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   void _handleNewMessage(Map<String, dynamic> payload) {
     final msg = Message.fromJson(payload);
+    // Avoid duplicate if already in history
+    if (state.messages.any((m) => m.id == msg.id)) return;
     state = state.copyWith(
       messages: [...state.messages, msg],
-      isLoading: false,
       isConnected: true,
     );
   }
@@ -181,30 +197,30 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void _handleReasoningDelta(Map<String, dynamic> payload) {
     final messageId = payload['messageId'] as String;
     final delta = payload['delta'] as String? ?? '';
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    final thinking = Map<String, int>.from(state.thinkingStartedAt);
+    if (!thinking.containsKey(messageId)) {
+      thinking[messageId] = now;
+    }
 
     final msgs = state.messages.map((m) {
       if (m.id == messageId) {
-        return m.copyWith(
-          reasoning: (m.reasoning ?? '') + delta,
-        );
+        return m.copyWith(reasoning: (m.reasoning ?? '') + delta);
       }
       return m;
     }).toList();
 
-    state = state.copyWith(messages: msgs);
+    state = state.copyWith(messages: msgs, thinkingStartedAt: thinking);
   }
 
   void _handleToolStarted(Map<String, dynamic> payload) {
     final messageId = payload['messageId'] as String?;
     final tc = ToolCall.fromJson(payload);
-
     if (messageId == null) return;
 
     final currentTools = Map<String, List<ToolCall>>.from(state.toolCalls);
-    currentTools[messageId] = [
-      ...currentTools[messageId] ?? [],
-      tc,
-    ];
+    currentTools[messageId] = [...currentTools[messageId] ?? [], tc];
     state = state.copyWith(toolCalls: currentTools);
   }
 
@@ -242,9 +258,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void _handleRunStarted(Map<String, dynamic> payload) {
     final messageId = payload['messageId'] as String?;
     if (messageId != null) {
-      state = state.copyWith(
-        runningAgents: {...state.runningAgents, messageId},
-      );
+      state = state.copyWith(runningAgents: {...state.runningAgents, messageId});
     }
   }
 
@@ -255,11 +269,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
     final msgs = state.messages.map((m) {
       if (m.id == messageId) {
-        return m.copyWith(
-          isStreaming: false,
-          inputTokens: inputTokens,
-          outputTokens: outputTokens,
-        );
+        return m.copyWith(isStreaming: false, inputTokens: inputTokens, outputTokens: outputTokens);
       }
       return m;
     }).toList();
@@ -274,10 +284,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
     final msgs = state.messages.map((m) {
       if (m.id == messageId) {
-        return m.copyWith(
-          isStreaming: false,
-          error: error,
-        );
+        return m.copyWith(isStreaming: false, error: error);
       }
       return m;
     }).toList();
@@ -286,19 +293,29 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(messages: msgs, runningAgents: running);
   }
 
+  void _handleAbortStarted(Map<String, dynamic> payload) {
+    // Mark all running agents as aborted
+    final msgs = state.messages.map((m) {
+      if (state.runningAgents.contains(m.id)) {
+        return m.copyWith(isStreaming: false, isAborted: true);
+      }
+      return m;
+    }).toList();
+    state = state.copyWith(messages: msgs, runningAgents: {});
+  }
+
   void _handleAbort(Map<String, dynamic> payload) {
     final messageId = payload['messageId'] as String?;
+    if (messageId == null) return;
 
-    if (messageId != null) {
-      final msgs = state.messages.map((m) {
-        if (m.id == messageId) {
-          return m.copyWith(isStreaming: false, isAborted: true);
-        }
-        return m;
-      }).toList();
-      final running = Set<String>.from(state.runningAgents)..remove(messageId);
-      state = state.copyWith(messages: msgs, runningAgents: running);
-    }
+    final msgs = state.messages.map((m) {
+      if (m.id == messageId) {
+        return m.copyWith(isStreaming: false, isAborted: true);
+      }
+      return m;
+    }).toList();
+    final running = Set<String>.from(state.runningAgents)..remove(messageId);
+    state = state.copyWith(messages: msgs, runningAgents: running);
   }
 
   void sendMessage(String content) {

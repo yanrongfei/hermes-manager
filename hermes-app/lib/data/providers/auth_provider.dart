@@ -19,7 +19,9 @@ class AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   final Ref _ref;
 
-  AuthNotifier(this._ref) : super(AuthState());
+  AuthNotifier(this._ref) : super(AuthState()) {
+    checkAuth();
+  }
 
   Future<bool> login(String username, String password) async {
     state = AuthState(isLoading: true);

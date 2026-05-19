@@ -34,6 +34,30 @@ class RoomsNotifier extends StateNotifier<AsyncValue<List<Room>>> {
     await dio.post('/rooms/join', data: {'invite_code': inviteCode});
     await loadRooms();
   }
+
+  Future<Room> createOneOnOneRoom(String agentName, String agentId) async {
+    final dio = _ref.read(dioProvider);
+    final response = await dio.post('/rooms', data: {
+      'name': agentName,
+      'mode': 'mention',
+      'agent_id': agentId,
+    });
+    final room = Room.fromJson(response.data);
+    await loadRooms();
+    return room;
+  }
+
+  Future<void> updateRoom(String roomId, String name) async {
+    final dio = _ref.read(dioProvider);
+    await dio.put('/rooms/$roomId', data: {'name': name});
+    await loadRooms();
+  }
+
+  Future<void> deleteRoom(String roomId) async {
+    final dio = _ref.read(dioProvider);
+    await dio.delete('/rooms/$roomId');
+    await loadRooms();
+  }
 }
 
 final roomsProvider = StateNotifierProvider<RoomsNotifier, AsyncValue<List<Room>>>((ref) {

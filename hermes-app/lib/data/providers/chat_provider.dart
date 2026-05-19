@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/config/app_config.dart';
 import '../models/message.dart';
+import 'api_provider.dart';
 import 'storage_provider.dart';
 
 class ChatState {
@@ -321,6 +322,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void sendStopTyping() {
     if (_channel == null) return;
     _channel!.sink.add(jsonEncode({'event': 'stop_typing'}));
+  }
+
+  Future<void> updateRoomName(String name) async {
+    final dio = _ref.read(dioProvider);
+    await dio.put('/rooms/$roomId', data: {'name': name});
   }
 
   @override

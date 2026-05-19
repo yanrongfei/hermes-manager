@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import re
 from typing import Dict, List, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
@@ -106,7 +107,11 @@ async def _start_agent_runs(room_id: str, user_id: str, username: str, content: 
         if room.mode == "broadcast":
             targets = room_agents
         elif room.mode == "mention":
-            targets = [a for a in room_agents if a.name in mentioned]
+            # For 1:1 chats with profile_id, auto-select the agent
+            if room.profile_id:
+                targets = [a for a in room_agents if a.profile_id == room.profile_id]
+            else:
+                targets = [a for a in room_agents if a.name in mentioned]
         else:
             targets = []
 
@@ -168,9 +173,14 @@ async def websocket_chat(
     websocket: WebSocket,
     token: str = Query(...),
 ):
+    logger = logging.getLogger("hermes.ws")
+    logger.info(f"WebSocket connection attempt, token present: {bool(token)}")
+
     # Verify token
     payload = decode_token(token)
+    logger.info(f"Token decode result: {payload}")
     if not payload or payload.get("type") != "access":
+        logger.warning(f"Token invalid or wrong type: payload={payload}")
         await websocket.close(code=4001)
         return
     user_id = payload.get("sub")

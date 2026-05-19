@@ -5,11 +5,13 @@ class RoomCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     avatar: Optional[str] = None
     mode: str = Field(default="broadcast")
+    profile_id: Optional[str] = None  # For 1:1 chats
 
 class RoomUpdate(BaseModel):
     name: Optional[str] = None
     avatar: Optional[str] = None
     mode: Optional[str] = None
+    profile_id: Optional[str] = None
 
 class RoomResponse(BaseModel):
     id: str
@@ -21,6 +23,7 @@ class RoomResponse(BaseModel):
     max_history_tokens: int
     tail_message_count: int
     invite_code: Optional[str]
+    profile_id: Optional[str]
     created_at: int
 
     class Config:

@@ -16,6 +16,7 @@ class Room(Base):
     max_history_tokens = Column(Integer, default=32000)
     tail_message_count = Column(Integer, default=20)
     invite_code = Column(String, nullable=True)
+    profile_id = Column(String, ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)  # For 1:1 chats
     created_at = Column(Integer, default=lambda: int(datetime.utcnow().timestamp()))
 
     # Relationships

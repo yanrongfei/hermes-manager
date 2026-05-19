@@ -33,7 +33,7 @@ async def create_room(
     db: AsyncSession = Depends(get_db)
 ):
     service = RoomService(db)
-    return await service.create_room(current_user.id, data.name, data.mode)
+    return await service.create_room(current_user.id, data.name, data.mode, data.profile_id)
 
 
 @router.get("/{room_id}", response_model=RoomDetail)

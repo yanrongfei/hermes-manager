@@ -76,7 +76,7 @@ class _AgentCardState extends ConsumerState<_AgentCard> {
         widget.gateway.profile,
       );
       if (context.mounted) {
-        context.push('/chat/${room.id}');
+        context.push('/chat/${room.id}?name=${Uri.encodeComponent(room.name)}');
       }
     } catch (e) {
       if (context.mounted) {

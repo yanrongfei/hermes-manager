@@ -8,11 +8,13 @@ import '../widgets/message_bubble.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String roomId;
+  final String? roomName; // For 1:1 chats, the agent name
   final List<Message> agents; // Agents in this room for @mention
 
   const ChatScreen({
     super.key,
     required this.roomId,
+    this.roomName,
     this.agents = const [],
   });
 
@@ -102,6 +104,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _focusNode.requestFocus();
   }
 
+  String _getDisplayName() {
+    // Priority: roomName (1:1 chat) > agents name > '群聊'
+    if (widget.roomName != null && widget.roomName!.isNotEmpty) {
+      return widget.roomName!;
+    }
+    if (widget.agents.isNotEmpty && widget.agents.first.senderName != null) {
+      return widget.agents.first.senderName!;
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatProvider(widget.roomId));
@@ -136,15 +149,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 radius: 14,
                 backgroundColor: const Color(0xFF5856D6),
                 child: Text(
-                  widget.agents.isNotEmpty
-                      ? widget.agents.first.senderName![0].toUpperCase()
+                  _getDisplayName().isNotEmpty
+                      ? _getDisplayName()[0].toUpperCase()
                       : '群'[0],
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ),
               const SizedBox(width: 8),
               Text(
-                widget.agents.isNotEmpty ? widget.agents.first.senderName! : '群聊',
+                _getDisplayName().isNotEmpty ? _getDisplayName() : '群聊',
                 style: const TextStyle(color: Color(0xFFECECEC), fontSize: 16),
               ),
               const SizedBox(width: 4),
@@ -416,9 +429,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _showEditNameDialog(BuildContext context) {
-    _roomNameController.text = widget.agents.isNotEmpty
-        ? widget.agents.first.senderName!
-        : '群聊';
+    _roomNameController.text = _getDisplayName().isNotEmpty ? _getDisplayName() : '群聊';
 
     showDialog(
       context: context,

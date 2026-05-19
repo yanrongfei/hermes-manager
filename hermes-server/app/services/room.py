@@ -4,6 +4,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.models.room import Room, RoomMember
+from app.models.agent import RoomAgent, Agent
 from app.models.message import Message
 from app.models.user import User
 
@@ -11,13 +12,14 @@ class RoomService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create_room(self, owner_id: str, name: str, mode: str = "broadcast") -> Room:
+    async def create_room(self, owner_id: str, name: str, mode: str = "broadcast", profile_id: Optional[str] = None) -> Room:
         invite_code = secrets.token_urlsafe(6)
         room = Room(
             owner_id=owner_id,
             name=name,
             mode=mode,
-            invite_code=invite_code
+            invite_code=invite_code,
+            profile_id=profile_id
         )
         self.db.add(room)
         await self.db.commit()
@@ -26,7 +28,24 @@ class RoomService:
         # Add owner as member
         member = RoomMember(room_id=room.id, user_id=owner_id, role="owner")
         self.db.add(member)
+
+        # If profile_id is provided (1:1 chat), add agent to room
+        if profile_id:
+            # Find the agent for this profile
+            result = await self.db.execute(
+                select(RoomAgent).where(RoomAgent.room_id == room.id)
+            )
+            if not result.scalar_one_or_none():
+                agent_result = await self.db.execute(
+                    select(Agent).where(Agent.profile_id == profile_id)
+                )
+                agent = agent_result.scalar_one_or_none()
+                if agent:
+                    room_agent = RoomAgent(room_id=room.id, agent_id=agent.id)
+                    self.db.add(room_agent)
+
         await self.db.commit()
+        await self.db.refresh(room)
 
         return room
 
@@ -71,6 +90,8 @@ class RoomService:
             room.avatar = data.avatar
         if data.mode is not None:
             room.mode = data.mode
+        if data.profile_id is not None:
+            room.profile_id = data.profile_id
 
         await self.db.commit()
         await self.db.refresh(room)

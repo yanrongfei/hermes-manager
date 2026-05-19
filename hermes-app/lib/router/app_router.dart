@@ -35,7 +35,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/chat/:roomId',
         builder: (context, state) {
           final roomId = state.pathParameters['roomId']!;
-          return ChatScreen(roomId: roomId);
+          final roomName = state.uri.queryParameters['name'];
+          return ChatScreen(roomId: roomId, roomName: roomName);
         },
       ),
     ],

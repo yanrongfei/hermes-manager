@@ -140,7 +140,7 @@ class ChatListTab extends ConsumerWidget {
         PopupMenuItem(
           child: Row(
             children: [
-              const Icon(Icons.chat_bubble_outline, color: Color(0xFFECECEC), size: 18),
+              Icon(Icons.chat_bubble_outline, color: const Color(0xFFECECEC), size: 18),
               const SizedBox(width: 12),
               const Text('新建对话', style: TextStyle(color: Color(0xFFECECEC))),
             ],
@@ -150,7 +150,7 @@ class ChatListTab extends ConsumerWidget {
         PopupMenuItem(
           child: Row(
             children: [
-              const Icon(Icons.group_add, color: Color(0xFFECECEC), size: 18),
+              Icon(Icons.people, color: const Color(0xFFECECEC), size: 18),
               const SizedBox(width: 12),
               const Text('发起群聊', style: TextStyle(color: Color(0xFFECECEC))),
             ],
@@ -160,7 +160,7 @@ class ChatListTab extends ConsumerWidget {
         PopupMenuItem(
           child: Row(
             children: [
-              const Icon(Icons.link, color: Color(0xFFECECEC), size: 18),
+              Icon(Icons.link, color: const Color(0xFFECECEC), size: 18),
               const SizedBox(width: 12),
               const Text('加入群聊', style: TextStyle(color: Color(0xFFECECEC))),
             ],
@@ -285,7 +285,7 @@ class ChatListTab extends ConsumerWidget {
     final response = await dio.post('/rooms', data: {'name': '新对话', 'mode': 'broadcast'});
     final room = Room.fromJson(response.data);
     if (context.mounted) {
-      context.push('/chat/${room.id}');
+      context.push('/chat/${room.id}?name=${Uri.encodeComponent(room.name)}');
     }
   }
 
@@ -405,7 +405,7 @@ class _ChatListItem extends ConsumerWidget {
         ref.read(roomsProvider.notifier).deleteRoom(room.id);
       },
       child: InkWell(
-        onTap: () => context.push('/chat/${room.id}'),
+        onTap: () => context.push('/chat/${room.id}?name=${Uri.encodeComponent(room.name)}'),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: const BoxDecoration(
@@ -460,30 +460,6 @@ class _ChatListItem extends ConsumerWidget {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            room.mode == 'broadcast' ? '广播模式' : '指定模式',
-                            style: TextStyle(color: Colors.grey[500], fontSize: 13),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF5856D6),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Text(
-                            '99+',
-                            style: TextStyle(color: Colors.white, fontSize: 10),
-                          ),
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),

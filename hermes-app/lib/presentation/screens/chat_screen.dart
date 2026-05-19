@@ -22,6 +22,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
+  final _roomNameController = TextEditingController();
   bool _isTyping = false;
   bool _showMentionPicker = false;
   String _mentionQuery = '';
@@ -31,6 +32,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _messageController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
+    _roomNameController.dispose();
     super.dispose();
   }
 
@@ -123,7 +125,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       backgroundColor: const Color(0xFF212121),
       appBar: AppBar(
         backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text('群聊', style: TextStyle(color: Color(0xFFECECEC))),
+        title: GestureDetector(
+          onTap: () => _showEditNameDialog(context),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: const Color(0xFF5856D6),
+                child: Text(
+                  widget.agents.isNotEmpty
+                      ? widget.agents.first.senderName![0].toUpperCase()
+                      : '群'[0],
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                widget.agents.isNotEmpty ? widget.agents.first.senderName! : '群聊',
+                style: const TextStyle(color: Color(0xFFECECEC), fontSize: 16),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.edit, color: Colors.grey, size: 14),
+            ],
+          ),
+        ),
         iconTheme: const IconThemeData(color: Color(0xFFECECEC)),
         actions: [
           IconButton(
@@ -225,7 +251,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 focusNode: _focusNode,
                 style: const TextStyle(color: Color(0xFFECECEC)),
                 decoration: InputDecoration(
-                  hintText: '输入消息...',
+                  hintText: '输入消息或在群聊中@成员...',
                   hintStyle: TextStyle(color: Colors.grey[600]),
                   filled: true,
                   fillColor: const Color(0xFF343541),
@@ -326,6 +352,50 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showEditNameDialog(BuildContext context) {
+    _roomNameController.text = widget.agents.isNotEmpty
+        ? widget.agents.first.senderName!
+        : '群聊';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text('编辑对话名称', style: TextStyle(color: Color(0xFFECECEC))),
+        content: TextField(
+          controller: _roomNameController,
+          style: const TextStyle(color: Color(0xFFECECEC)),
+          decoration: InputDecoration(
+            hintText: '输入对话名称',
+            hintStyle: TextStyle(color: Colors.grey[600]),
+            filled: true,
+            fillColor: const Color(0xFF343541),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final newName = _roomNameController.text.trim();
+              if (newName.isNotEmpty) {
+                await ref.read(chatProvider(widget.roomId).notifier).updateRoomName(newName);
+                if (ctx.mounted) Navigator.pop(ctx);
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
       ),
     );
   }

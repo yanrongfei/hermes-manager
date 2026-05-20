@@ -85,6 +85,31 @@ async def _format_conversation_history(room_id: str, limit: int = 50) -> List[di
         return history
 
 
+async def _cleanup_executor(room_id: str, message_id: str):
+    """Remove executor from active_executors list and process queued messages."""
+    if room_id not in active_executors:
+        return
+
+    # Remove completed executor
+    active_executors[room_id] = [
+        e for e in active_executors[room_id] if e.message_id != message_id
+    ]
+
+    # If no more executors running, process queued messages
+    if not active_executors[room_id]:
+        del active_executors[room_id]
+
+        if room_id in message_queues and message_queues[room_id]:
+            # Process next queued message
+            next_msg = message_queues[room_id].pop(0)
+            await manager.send_to_room(room_id, "queue_updated", {
+                "queueLength": len(message_queues[room_id]),
+            })
+            await _start_agent_runs(
+                room_id, next_msg["userId"], next_msg["username"], next_msg["content"]
+            )
+
+
 async def _start_agent_runs(room_id: str, user_id: str, username: str, content: str):
     """Start agent runs based on room mode (broadcast/mention)."""
     async with get_session_maker()() as session:
@@ -159,12 +184,7 @@ async def _start_agent_runs(room_id: str, user_id: str, username: str, content: 
             if room_id not in active_executors:
                 active_executors[room_id] = []
             active_executors[room_id].append(executor)
-            asyncio.create_task(executor.execute(
-                user_message=content,
-                model=settings.DEFAULT_MODEL,
-                instructions=description,
-                history=history,
-            ))
+            asyncio.create_task(_run_with_cleanup(executor, content, history, description))
         else:
             for agent in targets:
                 msg_svc = MessageService(session)
@@ -199,12 +219,23 @@ async def _start_agent_runs(room_id: str, user_id: str, username: str, content: 
                 if room_id not in active_executors:
                     active_executors[room_id] = []
                 active_executors[room_id].append(executor)
-                asyncio.create_task(executor.execute(
-                    user_message=content,
-                    model=settings.DEFAULT_MODEL,
-                    instructions=agent.description or "",
-                    history=history,
+                asyncio.create_task(_run_with_cleanup(
+                    executor, content, history, agent.description or ""
                 ))
+
+
+async def _run_with_cleanup(executor: RunExecutor, content: str, history: list, instructions: str):
+    """Run executor and ensure cleanup on completion."""
+    try:
+        await executor.execute(
+            user_message=content,
+            model=settings.DEFAULT_MODEL,
+            instructions=instructions,
+            history=history,
+        )
+    finally:
+        # Always cleanup, even if execute raises an exception
+        await _cleanup_executor(executor.room_id, executor.message_id)
 
 
 # Import Room at module level for type annotation

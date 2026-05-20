@@ -248,7 +248,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               children: [
                 chatState.isLoading
                     ? const Center(child: CircularProgressIndicator())
-                    : chatState.messages.isEmpty
+                    : chatState.error != null && chatState.messages.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.error_outline, size: 48, color: Colors.grey[500]),
+                                const SizedBox(height: 12),
+                                Text('连接失败', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+                                const SizedBox(height: 12),
+                                TextButton(
+                                  onPressed: () => ref.read(chatProvider(widget.roomId).notifier).reconnect(),
+                                  child: const Text('重试'),
+                                ),
+                              ],
+                            ),
+                          )
+                        : chatState.messages.isEmpty
                         ? Center(
                             child: Text(
                               '暂无消息\n发送消息开始对话',

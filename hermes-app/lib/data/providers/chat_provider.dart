@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/config/app_config.dart';
@@ -102,10 +103,31 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _subscription = _channel!.stream.listen(
         (data) => _handleMessage(data),
         onError: (e) {
-          state = state.copyWith(error: e.toString(), isConnected: false, isLoading: false);
+          // Clear running agents and mark streaming messages as done
+          final msgs = state.messages.map((m) {
+            if (m.isStreaming) return m.copyWith(isStreaming: false, error: 'Connection lost');
+            return m;
+          }).toList();
+          state = state.copyWith(
+            error: e.toString(),
+            isConnected: false,
+            isLoading: false,
+            runningAgents: {},
+            messages: msgs,
+          );
         },
         onDone: () {
-          state = state.copyWith(isConnected: false, isLoading: false);
+          // Clear running agents and mark streaming messages as done
+          final msgs = state.messages.map((m) {
+            if (m.isStreaming) return m.copyWith(isStreaming: false);
+            return m;
+          }).toList();
+          state = state.copyWith(
+            isConnected: false,
+            isLoading: false,
+            runningAgents: {},
+            messages: msgs,
+          );
         },
       );
 
@@ -116,50 +138,55 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   void _handleMessage(dynamic data) {
-    final json = jsonDecode(data as String);
-    final event = json['event'] as String;
-    final payload = json['data'] as Map<String, dynamic>? ?? {};
+    try {
+      final json = jsonDecode(data as String);
+      final event = json['event'] as String;
+      final payload = json['data'] as Map<String, dynamic>? ?? {};
 
-    switch (event) {
-      case 'message':
-        _handleNewMessage(payload);
-        break;
-      case 'message.delta':
-        _handleDelta(payload);
-        break;
-      case 'reasoning.delta':
-        _handleReasoningDelta(payload);
-        break;
-      case 'tool.started':
-        _handleToolStarted(payload);
-        break;
-      case 'tool.completed':
-        _handleToolCompleted(payload);
-        break;
-      case 'tool.error':
-        _handleToolError(payload);
-        break;
-      case 'run.started':
-        _handleRunStarted(payload);
-        break;
-      case 'run.completed':
-        _handleRunCompleted(payload);
-        break;
-      case 'run.failed':
-        _handleRunFailed(payload);
-        break;
-      case 'abort.started':
-        _handleAbortStarted(payload);
-        break;
-      case 'abort.completed':
-        _handleAbort(payload);
-        break;
-      case 'context_status':
-        state = state.copyWith(compressingStatus: payload['status'] as String?);
-        break;
-      case 'queue_updated':
-        state = state.copyWith(queueLength: payload['queueLength'] as int? ?? 0);
-        break;
+      switch (event) {
+        case 'message':
+          _handleNewMessage(payload);
+          break;
+        case 'message.delta':
+          _handleDelta(payload);
+          break;
+        case 'reasoning.delta':
+          _handleReasoningDelta(payload);
+          break;
+        case 'tool.started':
+          _handleToolStarted(payload);
+          break;
+        case 'tool.completed':
+          _handleToolCompleted(payload);
+          break;
+        case 'tool.error':
+          _handleToolError(payload);
+          break;
+        case 'run.started':
+          _handleRunStarted(payload);
+          break;
+        case 'run.completed':
+          _handleRunCompleted(payload);
+          break;
+        case 'run.failed':
+          _handleRunFailed(payload);
+          break;
+        case 'abort.started':
+          _handleAbortStarted(payload);
+          break;
+        case 'abort.completed':
+          _handleAbort(payload);
+          break;
+        case 'context_status':
+          state = state.copyWith(compressingStatus: payload['status'] as String?);
+          break;
+        case 'queue_updated':
+          state = state.copyWith(queueLength: payload['queueLength'] as int? ?? 0);
+          break;
+      }
+    } catch (e) {
+      // Prevent unhandled errors from crashing the stream listener
+      debugPrint('[ChatNotifier] Error handling message: $e');
     }
   }
 
@@ -344,6 +371,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<void> updateRoomName(String name) async {
     final dio = _ref.read(dioProvider);
     await dio.put('/rooms/$roomId', data: {'name': name});
+  }
+
+  Future<void> reconnect() async {
+    _subscription?.cancel();
+    _channel?.sink.close();
+    _channel = null;
+    _subscription = null;
+    await _init();
   }
 
   @override

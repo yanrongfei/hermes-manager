@@ -35,6 +35,10 @@ class RunExecutor:
         history: list[dict],
     ):
         """Run the agent and stream events to the room."""
+        import logging
+        logger = logging.getLogger("hermes.executor")
+        logger.info(f"[{self.message_id}] Execute started, model={model}")
+
         await manager.send_to_room(self.room_id, "run.started", {
             "messageId": self.message_id,
             "agentId": self.agent_id,
@@ -56,7 +60,17 @@ class RunExecutor:
 
                 await self._handle_event(event)
 
+            # Stream ended without response.completed — send run.completed manually
+            if not self._aborted:
+                logger.warning(f"[{self.message_id}] Stream ended without response.completed")
+                await manager.send_to_room(self.room_id, "run.completed", {
+                    "messageId": self.message_id,
+                    "inputTokens": 0,
+                    "outputTokens": 0,
+                })
+
         except Exception as e:
+            logger.error(f"[{self.message_id}] Execute failed: {type(e).__name__}: {e}")
             await manager.send_to_room(self.room_id, "run.failed", {
                 "messageId": self.message_id,
                 "error": str(e)
@@ -120,7 +134,9 @@ class RunExecutor:
             })
 
         elif etype == "response.completed":
-            usage = event.get("usage", {})
+            # Gateway nests usage inside response object
+            resp_obj = event.get("response", {})
+            usage = resp_obj.get("usage", {}) if isinstance(resp_obj, dict) else {}
             if not isinstance(usage, dict):
                 usage = {}
             await manager.send_to_room(self.room_id, "run.completed", {

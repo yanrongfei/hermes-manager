@@ -10,6 +10,8 @@ Hermes Manager is a mobile AI chat application with multi-user group chat and mu
 
 The backend connects to Hermes Gateway for AI agent routing.
 
+- **hermes-web-ui**: Web management dashboard (source at `/Users/yanrongfei/tool/hermes-web-ui/`, wiki at `hermes-web-ui-wiki.md`)
+
 ## Common Commands
 
 ### Backend (hermes-server)
@@ -83,6 +85,10 @@ Uses Flutter with Riverpod for state management, dio for HTTP, and go_router for
 - pydantic-settings uses `SettingsConfigDict` (not `ConfigDict`) for model_config
 - Server runs on port 3002 in production (configured in docker-compose.prod.yml)
 - API docs available at `/docs` when server is running
+
+## External References
+
+- **hermes-web-ui wiki**: Read `hermes-web-ui-wiki.md` before developing features that interact with the web UI or its APIs. It covers the web UI's architecture, API endpoints, WebSocket events, authentication, profile system, and configuration files.
 
 ## Development Rules
 

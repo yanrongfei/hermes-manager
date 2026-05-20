@@ -82,6 +82,29 @@ def _extract_api_key(profile_home: Path) -> str:
     return env.get("API_SERVER_KEY", "")
 
 
+def _check_profile_files(profile_home: Path) -> dict[str, Any]:
+    """Check for .env, soul.md, and skills directory existence."""
+    env_file = profile_home / ".env"
+    soul_file = profile_home / "soul.md"
+    skills_dir = profile_home / "skills"
+
+    has_env = env_file.exists()
+    has_soul = soul_file.exists()
+    skills_count = 0
+
+    if skills_dir.is_dir():
+        try:
+            skills_count = sum(1 for f in skills_dir.iterdir() if f.is_file())
+        except Exception:
+            pass
+
+    return {
+        "has_env": has_env,
+        "has_soul": has_soul,
+        "skills_count": skills_count,
+    }
+
+
 def _active_profile(home: Path) -> str:
     ap = home / "active_profile"
     if ap.exists():
@@ -171,6 +194,7 @@ def _scan_via_cli() -> list[dict[str, Any]] | None:
     for p in profile_list:
         home_dir = _hermes_home() if p.is_default else p.path
         api_key = _extract_api_key(home_dir)
+        file_info = _check_profile_files(home_dir)
 
         # Get gateway address from config
         cfg = _read_yaml(home_dir / "config.yaml")
@@ -197,6 +221,7 @@ def _scan_via_cli() -> list[dict[str, Any]] | None:
             "online": p.gateway_running,
             "active": p.is_default,
             "api_key": api_key,
+            **file_info,
         })
 
     return results
@@ -216,6 +241,7 @@ def _scan_profile(profile_home: Path, profile_name: str, home: Path) -> dict[str
     model_info = _extract_model_info(cfg)
     gateway_addr = _extract_gateway_address(cfg)
     gw_info = _gateway_info(home if profile_name == "default" else profile_home)
+    file_info = _check_profile_files(profile_home)
 
     if profile_name != "default":
         home_gw = _gateway_info(home)
@@ -245,6 +271,7 @@ def _scan_profile(profile_home: Path, profile_name: str, home: Path) -> dict[str
         "address": address,
         "online": online,
         "api_key": api_key,
+        **file_info,
     }
 
 

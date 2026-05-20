@@ -18,12 +18,16 @@ class AuthState {
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final Ref _ref;
+  bool _isLoggingIn = false;
 
   AuthNotifier(this._ref) : super(AuthState()) {
-    checkAuth();
+    // Don't auto-check auth here - causes race condition with login/register
+    // Instead, check auth only when explicitly needed
   }
 
   Future<bool> login(String username, String password) async {
+    if (_isLoggingIn) return false;
+    _isLoggingIn = true;
     state = AuthState(isLoading: true);
     try {
       final dio = _ref.read(dioProvider);
@@ -50,6 +54,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (e, st) {
       state = AuthState(error: '登录失败: $e\n$st');
       return false;
+    } finally {
+      _isLoggingIn = false;
     }
   }
 
@@ -88,6 +94,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> checkAuth() async {
+    // Skip if login is in progress - prevents race condition where
+    // checkAuth() fails with old token and clears new token set by login()
+    if (_isLoggingIn) return;
+
     final storage = _ref.read(storageProvider);
     final token = await storage.get(AppConfig.accessTokenKey);
     if (token == null) {
@@ -99,7 +109,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final response = await dio.get('/auth/me');
       state = AuthState(user: User.fromJson(response.data));
     } catch (e) {
-      await logout();
+      // Token invalid or expired - but don't logout if login is in progress
+      // to avoid clearing newly set tokens
+      if (!_isLoggingIn) {
+        await logout();
+      }
     }
   }
 }

@@ -15,6 +15,7 @@ from app.api.auth import router as auth_router
 from app.api.rooms import router as rooms_router
 from app.api.gateways import router as gateways_router
 from app.api.agents import router as agents_router
+from app.api.messages import router as messages_router
 from app.api.ws import router as ws_router
 from app.models import User, Room, RoomMember, Message, Gateway, Profile, Agent, RoomAgent
 
@@ -89,6 +90,7 @@ app.include_router(auth_router)
 app.include_router(rooms_router)
 app.include_router(gateways_router)
 app.include_router(agents_router)
+app.include_router(messages_router)
 app.include_router(ws_router)
 
 

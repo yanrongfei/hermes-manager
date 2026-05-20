@@ -169,6 +169,12 @@ async def list_gateway_status(
             "pid": p.get("pid"),
             "mode": p.get("mode", "local"),
             "api_server_connected": p.get("api_server_connected", False),
+            "model": p.get("model", ""),
+            "provider": p.get("provider", ""),
+            "profile_path": p.get("config_path", ""),
+            "skills_count": p.get("skills_count", 0),
+            "has_env": p.get("has_env", False),
+            "has_soul": p.get("has_soul", False),
         }
         for p in profiles
     ]

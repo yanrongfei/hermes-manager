@@ -504,9 +504,9 @@ void main() {
             data: {
               'id': 'new-room-1',
               'name': 'New Room',
-              'ownerId': 'user-1',
-              'mode': 'broadcast',
-              'createdAt': '2024-01-01T00:00:00Z',
+              'owner_id': 'user-1',
+              'mode': 'direct',
+              'created_at': 1704067200,
             },
           ));
 

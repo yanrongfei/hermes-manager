@@ -96,8 +96,8 @@ class _AgentCardState extends ConsumerState<_AgentCard> {
   void _startConversation(BuildContext context) async {
     try {
       final room = await ref.read(roomsProvider.notifier).createOneOnOneRoom(
-        widget.gateway.profile,
-        widget.gateway.profile,
+        agentName: widget.gateway.profile,
+        agentId: widget.gateway.profile,
       );
       if (context.mounted) {
         context.push('/chat/${room.id}?name=${Uri.encodeComponent(room.name)}');

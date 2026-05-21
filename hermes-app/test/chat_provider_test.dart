@@ -510,11 +510,18 @@ void main() {
             },
           ));
 
-      await container.read(roomsProvider.notifier).createRoom('New Room');
+      await container.read(roomsProvider.notifier).createRoom(
+        name: 'New Room',
+        agentIds: [],
+      );
 
       verify(() => mockDio.post(
         any(),
-        data: {'name': 'New Room', 'mode': 'broadcast'},
+        data: {
+          'name': 'New Room',
+          'agentIds': [],
+          'mode': 'direct',
+        },
       )).called(1);
     });
 
@@ -540,14 +547,14 @@ void main() {
           ));
 
       final room = await container.read(roomsProvider.notifier)
-          .createOneOnOneRoom('1:1 Chat', 'agent-profile-1');
+          .createOneOnOneRoom(agentName: '1:1 Chat', agentId: 'agent-profile-1');
 
       verify(() => mockDio.post(
         any(),
         data: {
           'name': '1:1 Chat',
-          'mode': 'mention',
-          'profile_id': 'agent-profile-1',
+          'agentIds': ['agent-profile-1'],
+          'mode': 'direct',
         },
       )).called(1);
 

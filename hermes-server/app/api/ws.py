@@ -128,17 +128,15 @@ async def _start_agent_runs(room_id: str, user_id: str, username: str, content: 
         agent_svc = AgentService(session)
         room_agents = await agent_svc.get_room_agents(room_id)
 
-        if room.mode == "broadcast":
+        # 1:1 chat: use profile_id directly when no agent record exists
+        if room.profile_id:
+            targets = [a for a in room_agents if a.profile_id == room.profile_id]
+            if not targets:
+                targets = None  # signal: use profile_id directly
+        elif room.mode == "broadcast":
             targets = room_agents
         elif room.mode == "mention":
-            if room.profile_id:
-                # Try matching by profile FK first
-                targets = [a for a in room_agents if a.profile_id == room.profile_id]
-                # Fallback: if no agents in room, use profile_id as agent name directly
-                if not targets and not room_agents:
-                    targets = None  # signal: use profile_id directly
-            else:
-                targets = [a for a in room_agents if a.name in mentioned]
+            targets = [a for a in room_agents if a.name in mentioned]
         else:
             targets = []
 

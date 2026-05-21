@@ -14,6 +14,9 @@ class RoomService:
 
     async def create_room(self, owner_id: str, name: str, mode: str = "broadcast", profile_id: Optional[str] = None) -> Room:
         invite_code = secrets.token_urlsafe(6)
+        # 1:1 chat: use mention mode so gateway is called directly when no agent record exists
+        if profile_id and mode == "broadcast":
+            mode = "mention"
         room = Room(
             owner_id=owner_id,
             name=name,

@@ -32,11 +32,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       return;
     }
 
-    // Validate token by calling /auth/me
+    // Validate token by calling /auth/me and populate AuthState
     try {
-      final dio = ref.read(dioProvider);
-      await dio.get('/auth/me');
+      await ref.read(authProvider.notifier).checkAuth();
       if (!mounted) return;
+      final authState = ref.read(authProvider);
+      if (!authState.isAuthenticated) {
+        context.go('/login');
+        return;
+      }
       context.go('/home');
     } catch (e) {
       // Token invalid or expired, go to login

@@ -206,7 +206,7 @@ class _StreamingDotsState extends State<_StreamingDots> with SingleTickerProvide
               height: widget.size,
               margin: const EdgeInsets.symmetric(horizontal: 2),
               decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: opacity.clamp(0.3, 1.0)),
+                color: Colors.green.withOpacity(opacity.clamp(0.3, 1.0)),
                 shape: BoxShape.circle,
               ),
             );
@@ -546,9 +546,9 @@ class _ErrorCard extends StatelessWidget {
       margin: const EdgeInsets.only(left: 48, top: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.1),
+        color: Colors.red.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+        border: Border.all(color: Colors.red.withOpacity(0.3)),
       ),
       child: Row(
         children: [
@@ -570,7 +570,7 @@ class _AbortCard extends StatelessWidget {
       margin: const EdgeInsets.only(left: 48, top: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.grey.withValues(alpha: 0.1),
+        color: Colors.grey.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(

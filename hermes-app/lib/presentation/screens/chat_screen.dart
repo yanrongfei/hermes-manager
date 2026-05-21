@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/models/message.dart';
+import '../../data/models/room.dart';
 import '../../data/providers/chat_provider.dart';
 import '../../data/providers/room_provider.dart';
 import '../widgets/message_bubble.dart';
@@ -40,6 +41,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _scrollController.position.maxScrollExtent - _scrollController.offset > 200;
       if (show != _showScrollBottom) setState(() => _showScrollBottom = show);
     });
+
+    // Listen for agent_busy toast
+    ref.listen(chatProvider(widget.roomId), (prev, next) {
+      if (prev?.agentBusyMessage != next.agentBusyMessage && next.agentBusyMessage != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(next.agentBusyMessage!),
+                backgroundColor: Colors.orange,
+                duration: const Duration(milliseconds: 2500),
+              ),
+            );
+          }
+        });
+      }
+    });
   }
 
   @override
@@ -50,6 +68,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _roomNameController.dispose();
     super.dispose();
   }
+
+  Room? get _currentRoom {
+    final roomsState = ref.read(roomsProvider);
+    return roomsState.whenOrNull(
+      data: (rooms) => rooms.where((r) => r.id == widget.roomId).firstOrNull,
+    );
+  }
+
+  bool get _is1v1 => _currentRoom?.is1v1 ?? widget.roomName != null;
 
   void _sendMessage() {
     final content = _messageController.text.trim();
@@ -149,82 +176,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF212121),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: GestureDetector(
-          onTap: () => _showEditNameDialog(context),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(
-                radius: 14,
-                backgroundColor: const Color(0xFF5856D6),
-                child: Text(
-                  _getDisplayName().isNotEmpty
-                      ? _getDisplayName()[0].toUpperCase()
-                      : '群'[0],
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _getDisplayName().isNotEmpty ? _getDisplayName() : '群聊',
-                style: const TextStyle(color: Color(0xFFECECEC), fontSize: 16),
-              ),
-              const SizedBox(width: 4),
-              const Icon(Icons.edit, color: Colors.grey, size: 14),
-            ],
-          ),
-        ),
-        iconTheme: const IconThemeData(color: Color(0xFFECECEC)),
-        actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Colors.grey),
-            color: const Color(0xFF3A3A3A),
-            onSelected: (value) {
-              if (value == 'invite') {
-                _showInviteDialog();
-              } else if (value == 'delete') {
-                _showDeleteConfirmation();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'invite',
-                child: Row(
-                  children: [
-                    Icon(Icons.person_add, color: Color(0xFFECECEC), size: 18),
-                    SizedBox(width: 12),
-                    Text('邀请成员', style: TextStyle(color: Color(0xFFECECEC))),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_outline, color: Colors.red, size: 18),
-                    SizedBox(width: 12),
-                    Text('删除对话', style: TextStyle(color: Color(0xFFECECEC))),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+      appBar: _is1v1 ? _build1v1AppBar() : _buildGroupAppBar(),
       body: Column(
         children: [
-          // Running agents bar
-          if (hasRunningAgents)
+          // Running agents bar (group only)
+          if (!_is1v1 && hasRunningAgents)
             _RunningAgentsBar(
               count: chatState.runningAgents.length,
               onAbort: _sendAbort,
               isAborting: isAborting,
             ),
 
-          // Queue indicator
-          if (chatState.queueLength > 0)
+          // Queue indicator (group only)
+          if (!_is1v1 && chatState.queueLength > 0)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
@@ -309,8 +273,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ),
 
-          // @mention picker
-          if (_showMentionPicker && widget.agents.isNotEmpty)
+          // @mention picker (group only)
+          if (!_is1v1 && _showMentionPicker && widget.agents.isNotEmpty)
             _MentionPicker(
               agents: widget.agents.where((a) =>
                 a.senderName!.toLowerCase().contains(_mentionQuery)
@@ -337,10 +301,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            IconButton(
-              icon: const Icon(Icons.add, color: Color(0xFFA0A0A0)),
-              onPressed: () => _showAttachmentSheet(),
-            ),
+            // Group chat: show @ button for mentions; 1:1: no button
+            if (!_is1v1)
+              IconButton(
+                icon: const Icon(Icons.alternate_email, color: Color(0xFFA0A0A0)),
+                onPressed: () {
+                  // Focus input and show mention picker
+                  _focusNode.requestFocus();
+                },
+              ),
+            if (_is1v1)
+              const SizedBox(width: 48), // Placeholder for 1:1 to align input
             Flexible(
               child: TextField(
                 controller: _messageController,
@@ -373,6 +344,109 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
       ),
     );
+  }
+
+  PreferredSizeWidget _build1v1AppBar() {
+    return AppBar(
+      backgroundColor: const Color(0xFF2A2A2A),
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Color(0xFFECECEC)),
+        onPressed: () => context.pop(),
+      ),
+      title: Text(
+        _getDisplayName().isNotEmpty ? _getDisplayName() : '对话',
+        style: const TextStyle(color: Color(0xFFECECEC), fontSize: 16),
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.close, color: Color(0xFFECECEC)),
+          onPressed: () => context.go('/home'),
+        ),
+      ],
+    );
+  }
+
+  PreferredSizeWidget _buildGroupAppBar() {
+    return AppBar(
+      backgroundColor: const Color(0xFF2A2A2A),
+      title: GestureDetector(
+        onTap: () => _showEditNameDialog(context),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 14,
+              backgroundColor: const Color(0xFF5856D6),
+              child: Text(
+                _getDisplayName().isNotEmpty
+                    ? _getDisplayName()[0].toUpperCase()
+                    : '群'[0],
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _getDisplayName().isNotEmpty ? _getDisplayName() : '群聊',
+              style: const TextStyle(color: Color(0xFFECECEC), fontSize: 16),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.edit, color: Colors.grey, size: 14),
+          ],
+        ),
+      ),
+      iconTheme: const IconThemeData(color: Color(0xFFECECEC)),
+      actions: [
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, color: Colors.grey),
+          color: const Color(0xFF3A3A3A),
+          onSelected: (value) {
+            if (value == 'invite') {
+              _showInviteDialog();
+            } else if (value == 'delete') {
+              _showDeleteConfirmation();
+            } else if (value == 'members') {
+              _showMembersSheet();
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'members',
+              child: Row(
+                children: [
+                  Icon(Icons.people, color: Color(0xFFECECEC), size: 18),
+                  SizedBox(width: 12),
+                  Text('成员', style: TextStyle(color: Color(0xFFECECEC))),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'invite',
+              child: Row(
+                children: [
+                  Icon(Icons.person_add, color: Color(0xFFECECEC), size: 18),
+                  SizedBox(width: 12),
+                  Text('邀请成员', style: TextStyle(color: Color(0xFFECECEC))),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'delete',
+              child: Row(
+                children: [
+                  Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                  SizedBox(width: 12),
+                  Text('删除对话', style: TextStyle(color: Color(0xFFECECEC))),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  void _showMembersSheet() {
+    // TODO: Implement members sheet
   }
 
   void _showInviteDialog() {

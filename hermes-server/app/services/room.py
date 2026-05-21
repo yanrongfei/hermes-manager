@@ -12,17 +12,24 @@ class RoomService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create_room(self, owner_id: str, name: str, mode: str = "broadcast", profile_id: Optional[str] = None) -> Room:
-        invite_code = secrets.token_urlsafe(6)
-        # 1:1 chat: use mention mode so gateway is called directly when no agent record exists
-        if profile_id and mode == "broadcast":
-            mode = "mention"
+    async def create_room(
+        self,
+        owner_id: str,
+        name: str,
+        mode: str = "direct",
+        agent_ids: List[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Room:
+        # Calculate type based on agent_ids length
+        type = "1v1" if (len(agent_ids) == 1 if agent_ids else agent_id) else "group"
+
+        # invite_code is lazily generated, set to None at creation
         room = Room(
             owner_id=owner_id,
             name=name,
             mode=mode,
-            invite_code=invite_code,
-            profile_id=profile_id
+            invite_code=None,
+            agent_id=agent_id,
         )
         self.db.add(room)
         await self.db.commit()
@@ -32,20 +39,11 @@ class RoomService:
         member = RoomMember(room_id=room.id, user_id=owner_id, role="owner")
         self.db.add(member)
 
-        # If profile_id is provided (1:1 chat), add agent to room
-        if profile_id:
-            # Find the agent for this profile
-            result = await self.db.execute(
-                select(RoomAgent).where(RoomAgent.room_id == room.id)
-            )
-            if not result.scalar_one_or_none():
-                agent_result = await self.db.execute(
-                    select(Agent).where(Agent.profile_id == profile_id)
-                )
-                agent = agent_result.scalar_one_or_none()
-                if agent:
-                    room_agent = RoomAgent(room_id=room.id, agent_id=agent.id)
-                    self.db.add(room_agent)
+        # If agent_ids provided, add agents to room
+        if agent_ids:
+            for ag_id in agent_ids:
+                room_agent = RoomAgent(room_id=room.id, agent_id=ag_id)
+                self.db.add(room_agent)
 
         await self.db.commit()
         await self.db.refresh(room)
@@ -225,3 +223,55 @@ class RoomService:
             select(Room).where(Room.invite_code == invite_code)
         )
         return result.scalar_one_or_none()
+
+    async def get_room_stats(self, room_id: str) -> dict:
+        """Get room statistics including member count and running tasks."""
+        # Member count
+        members = await self.get_room_members(room_id)
+        member_count = len(members)
+
+        # Online count (simplified - all members considered online for now)
+        online_count = member_count
+
+        # Running tasks count (from ws.py active_executors)
+        from app.api.ws import active_executors
+        running_count = len(active_executors.get(room_id, []))
+
+        # Get last message preview
+        result = await self.db.execute(
+            select(Message)
+            .where(Message.room_id == room_id)
+            .order_by(Message.created_at.desc())
+            .limit(1)
+        )
+        last_message = None
+        updated_at = None
+        msg = result.scalar_one_or_none()
+        if msg:
+            updated_at = msg.created_at
+            last_message = msg.content[:100] if msg.content and len(msg.content) > 100 else msg.content
+
+        return {
+            "member_count": member_count,
+            "online_count": online_count,
+            "has_running_tasks": running_count > 0,
+            "running_tasks_count": running_count,
+            "last_message": last_message,
+            "updated_at": updated_at,
+        }
+
+    async def generate_invite_code(self, room_id: str) -> Optional[str]:
+        """Lazily generate invite code for a room."""
+        room = await self.get_room(room_id)
+        if not room:
+            return None
+        if room.mode == "direct":
+            return None  # 1:1 rooms don't support invite codes
+        if room.invite_code:
+            return room.invite_code  # Already has one
+
+        invite_code = secrets.token_urlsafe(6)
+        room.invite_code = invite_code
+        await self.db.commit()
+        await self.db.refresh(room)
+        return invite_code

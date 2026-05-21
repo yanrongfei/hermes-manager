@@ -1,0 +1,4 @@
+{"type":"server-started","port":52771,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:52771","screen_dir":"/vol4/1000/nas4/workspace/hermes-manager/.superpowers/brainstorm/1550809-1779027614/content","state_dir":"/vol4/1000/nas4/workspace/hermes-manager/.superpowers/brainstorm/1550809-1779027614/state"}
+{"type":"screen-added","file":"/vol4/1000/nas4/workspace/hermes-manager/.superpowers/brainstorm/1550809-1779027614/content/chat-list-design.html"}
+{"type":"screen-added","file":"/vol4/1000/nas4/workspace/hermes-manager/.superpowers/brainstorm/1550809-1779027614/content/chat-list-wechat.html"}
+{"type":"server-stopped","reason":"idle timeout"}

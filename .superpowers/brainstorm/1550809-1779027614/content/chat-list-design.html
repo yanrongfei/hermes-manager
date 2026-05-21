@@ -1,0 +1,138 @@
+<h2>消息列表页面设计对比</h2>
+<p class="subtitle">左边：当前设计 | 右边：参考微信风格</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">当前设计</div>
+    <div class="mockup-body" style="background:#212121;padding:8px;min-height:400px;">
+      <!-- Header -->
+      <div style="background:#2A2A2A;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+        <span style="color:#ECECEC;font-size:18px;font-weight:bold;">对话</span>
+        <span style="color:#A0A0A0;">🔍</span>
+      </div>
+      <!-- Chat list item -->
+      <div style="background:#2A2A2A;margin:4px 12px;padding:12px;border-radius:8px;display:flex;align-items:center;">
+        <div style="background:#5856D6;width:48px;height:48px;border-radius:24px;display:flex;align-items:center;justify-content:center;margin-right:12px;">
+          <span style="color:white;font-size:18px;">G</span>
+        </div>
+        <div style="flex:1;">
+          <div style="color:#ECECEC;font-size:16px;margin-bottom:4px;">群聊名称</div>
+          <div style="color:#666;font-size:12px;">广播模式</div>
+        </div>
+        <span style="color:#666;">›</span>
+      </div>
+      <!-- Another item -->
+      <div style="background:#2A2A2A;margin:4px 12px;padding:12px;border-radius:8px;display:flex;align-items:center;">
+        <div style="background:#5856D6;width:48px;height:48px;border-radius:24px;display:flex;align-items:center;justify-content:center;margin-right:12px;">
+          <span style="color:white;font-size:18px;">A</span>
+        </div>
+        <div style="flex:1;">
+          <div style="color:#ECECEC;font-size:16px;margin-bottom:4px;">另一个群</div>
+          <div style="color:#666;font-size:12px;">指定模式</div>
+        </div>
+        <span style="color:#666;">›</span>
+      </div>
+      <!-- Empty state -->
+      <div style="text-align:center;padding:40px;color:#666;font-size:14px;">
+        暂无群聊<br>
+        <span style="font-size:12px;color:#777;">点击右下角创建群聊</span>
+      </div>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">参考微信</div>
+    <div class="mockup-body" style="background:#EDEDED;padding:8px;min-height:400px;">
+      <!-- Header -->
+      <div style="background:#EDEDED;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #DDD;">
+        <span style="color:#333;font-size:18px;font-weight:bold;">微信</span>
+        <span style="color:#666;">🔍</span>
+      </div>
+      <!-- Chat list item - WeChat style -->
+      <div style="background:white;margin:2px 0;padding:10px 16px;display:flex;align-items:center;">
+        <div style="background:#5856D6;width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-right:12px;">
+          <span style="color:white;font-size:18px;">G</span>
+        </div>
+        <div style="flex:1;border-bottom:1px solid #F0F0F0;padding-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="color:#333;font-size:16px;font-weight:500;">群聊名称</span>
+            <span style="color:#999;font-size:11px;">刚刚</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#999;font-size:13px;">最后一条消息...</span>
+            <span style="background:#FF3B30;color:white;font-size:10px;padding:2px 6px;border-radius:10px;">3</span>
+          </div>
+        </div>
+      </div>
+      <!-- Another item -->
+      <div style="background:white;margin:2px 0;padding:10px 16px;display:flex;align-items:center;">
+        <div style="background:#10A37F;width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-right:12px;">
+          <span style="color:white;font-size:18px;">A</span>
+        </div>
+        <div style="flex:1;border-bottom:1px solid #F0F0F0;padding-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="color:#333;font-size:16px;font-weight:500;">另一个群</span>
+            <span style="color:#999;font-size:11px;">昨天</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#999;font-size:13px;">最后一条消息...</span>
+          </div>
+        </div>
+      </div>
+      <!-- Time divider -->
+      <div style="text-align:center;padding:8px;color:#BBB;font-size:11px;">
+        昨天
+      </div>
+      <!-- More items -->
+      <div style="background:white;margin:2px 0;padding:10px 16px;display:flex;align-items:center;">
+        <div style="background:#FF9500;width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-right:12px;">
+          <span style="color:white;font-size:18px;">T</span>
+        </div>
+        <div style="flex:1;border-bottom:1px solid #F0F0F0;padding-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="color:#333;font-size:16px;font-weight:500;">技术讨论</span>
+            <span style="color:#999;font-size:11px;">周一</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#999;font-size:13px;">最后一条消息...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:20px;">
+  <h3>主要差异</h3>
+  <div class="options">
+    <div class="option" data-choice="a" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>圆角头像 → 方角头像</h3>
+        <p>微信用圆角矩形，和整体卡片风格更统一</p>
+      </div>
+    </div>
+    <div class="option" data-choice="b" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>增加最后消息预览 + 时间</h3>
+        <p>显示最新消息内容和时间戳，方便快速浏览</p>
+      </div>
+    </div>
+    <div class="option" data-choice="c" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>未读消息红点</h3>
+        <p>显示未读数量红点，直观知道有多少新消息</p>
+      </div>
+    </div>
+    <div class="option" data-choice="d" onclick="toggleSelect(this)">
+      <div class="letter">D</div>
+      <div class="content">
+        <h3>时间分组</h3>
+        <p>按"刚刚"、"昨天"、"周一"等分组，消息列表更清晰</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p style="color:#888;font-size:13px;margin-top:16px;">💡 点击选择一个或多个需要改进的方面</p>

@@ -5,6 +5,7 @@ import '../presentation/screens/login_screen.dart';
 import '../presentation/screens/register_screen.dart';
 import '../presentation/screens/home_screen.dart';
 import '../presentation/screens/chat_screen.dart';
+import '../presentation/screens/create_session_screen.dart';
 import '../presentation/screens/gateways_screen.dart';
 import '../presentation/screens/agents_directory_screen.dart';
 import '../presentation/screens/skills_screen.dart';
@@ -58,6 +59,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final roomName = state.uri.queryParameters['name'];
           return ChatScreen(roomId: roomId, roomName: roomName);
         },
+      ),
+      GoRoute(
+        path: '/chat/create',
+        builder: (context, state) => const CreateSessionScreen(),
       ),
     ],
   );

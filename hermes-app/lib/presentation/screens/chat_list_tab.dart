@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../data/models/room.dart';
 import '../../data/providers/room_provider.dart';
-import '../../data/providers/api_provider.dart';
 
 class ChatListTab extends ConsumerWidget {
   const ChatListTab({super.key});
@@ -155,7 +153,7 @@ class ChatListTab extends ConsumerWidget {
               const Text('发起群聊', style: TextStyle(color: Color(0xFFECECEC))),
             ],
           ),
-          onTap: () => Future.microtask(() => _showCreateRoomDialog(context, ref)),
+          onTap: () => Future.microtask(() => context.push('/chat/create')),
         ),
         PopupMenuItem(
           child: Row(
@@ -171,122 +169,8 @@ class ChatListTab extends ConsumerWidget {
     );
   }
 
-  void _showCreateRoomDialog(BuildContext context, WidgetRef ref) {
-    final nameController = TextEditingController();
-    String selectedMode = 'broadcast';
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF2A2A2A),
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            24,
-            24,
-            24,
-            MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '创建群聊',
-                style: TextStyle(
-                  color: Color(0xFFECECEC),
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: nameController,
-                style: const TextStyle(color: Color(0xFFECECEC)),
-                decoration: InputDecoration(
-                  labelText: '群聊名称',
-                  labelStyle: TextStyle(color: Colors.grey[500]),
-                  filled: true,
-                  fillColor: const Color(0xFF343541),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '协作模式',
-                style: TextStyle(color: Colors.grey[500], fontSize: 13),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  ChoiceChip(
-                    label: const Text('广播模式'),
-                    selected: selectedMode == 'broadcast',
-                    onSelected: (_) => setState(() => selectedMode = 'broadcast'),
-                    selectedColor: const Color(0xFF5856D6),
-                    labelStyle: TextStyle(
-                      color: selectedMode == 'broadcast'
-                          ? Colors.white
-                          : Colors.grey[500],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: const Text('指定模式'),
-                    selected: selectedMode == 'mention',
-                    onSelected: (_) => setState(() => selectedMode = 'mention'),
-                    selectedColor: const Color(0xFF5856D6),
-                    labelStyle: TextStyle(
-                      color: selectedMode == 'mention'
-                          ? Colors.white
-                          : Colors.grey[500],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF5856D6),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: () async {
-                    if (nameController.text.isNotEmpty) {
-                      await ref.read(roomsProvider.notifier).createRoom(
-                        nameController.text.trim(),
-                        mode: selectedMode,
-                      );
-                      if (context.mounted) Navigator.pop(context);
-                    }
-                  },
-                  child: const Text(
-                    '创建',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   void _createNewConversation(BuildContext context, WidgetRef ref) async {
-    final dio = ref.read(dioProvider);
-    final response = await dio.post('/rooms', data: {'name': '新对话', 'mode': 'broadcast'});
-    final room = Room.fromJson(response.data);
-    if (context.mounted) {
-      context.push('/chat/${room.id}?name=${Uri.encodeComponent(room.name)}');
-    }
+    context.push('/chat/create');
   }
 
   void _showJoinRoomDialog(BuildContext context, WidgetRef ref) {

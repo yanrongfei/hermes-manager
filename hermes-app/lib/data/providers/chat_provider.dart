@@ -18,6 +18,7 @@ class ChatState {
   final String? compressingStatus;
   final int queueLength;
   final Map<String, int> thinkingStartedAt; // messageId -> timestamp ms
+  final String? agentBusyMessage; // Agent busy toast message
 
   ChatState({
     this.messages = const [],
@@ -29,6 +30,7 @@ class ChatState {
     this.compressingStatus,
     this.queueLength = 0,
     this.thinkingStartedAt = const {},
+    this.agentBusyMessage,
   });
 
   ChatState copyWith({
@@ -41,6 +43,7 @@ class ChatState {
     String? compressingStatus,
     int? queueLength,
     Map<String, int>? thinkingStartedAt,
+    String? agentBusyMessage,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -52,6 +55,7 @@ class ChatState {
       compressingStatus: compressingStatus ?? this.compressingStatus,
       queueLength: queueLength ?? this.queueLength,
       thinkingStartedAt: thinkingStartedAt ?? this.thinkingStartedAt,
+      agentBusyMessage: agentBusyMessage,
     );
   }
 }
@@ -182,6 +186,16 @@ class ChatNotifier extends StateNotifier<ChatState> {
           break;
         case 'queue_updated':
           state = state.copyWith(queueLength: payload['queueLength'] as int? ?? 0);
+          break;
+        case 'agent_busy':
+          final agentName = payload['agentName'] as String? ?? 'Agent';
+          state = state.copyWith(agentBusyMessage: '$agentName 正忙，请稍后再试');
+          // Auto-clear after 2.5 seconds
+          Future.delayed(const Duration(milliseconds: 2500), () {
+            if (mounted) {
+              state = state.copyWith(agentBusyMessage: null);
+            }
+          });
           break;
       }
     } catch (e) {

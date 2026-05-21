@@ -1,0 +1,134 @@
+<h2>对话列表页面设计</h2>
+<p class="subtitle">参考微信风格：顶部搜索 + 右上角操作菜单</p>
+
+<div class="mockup">
+  <div class="mockup-header">对话列表 - 微信风格</div>
+  <div class="mockup-body" style="background:#EDEDED;padding:0;min-height:500px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+
+    <!-- Top bar with search and add button -->
+    <div style="background:#EDEDED;padding:10px 16px;display:flex;align-items:center;gap:10px;">
+      <!-- Add button -->
+      <div style="position:relative;">
+        <div style="width:28px;height:28px;background:#07C160;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;">+</div>
+        <!-- Dropdown menu -->
+        <div style="position:absolute;top:36px;right:0;background:white;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);width:180px;z-index:100;display:none;">
+          <div style="padding:12px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F0F0F0;">
+            <span style="font-size:18px;">👤</span>
+            <span style="color:#333;font-size:14px;">发起群聊</span>
+          </div>
+          <div style="padding:12px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F0F0F0;">
+            <span style="font-size:18px;">🧑‍🤝‍🧑</span>
+            <span style="color:#333;font-size:14px;">添加朋友</span>
+          </div>
+          <div style="padding:12px 16px;display:flex;align-items:center;gap:12px;">
+            <span style="font-size:18px;">📷</span>
+            <span style="color:#333;font-size:14px;">扫一扫</span>
+          </div>
+        </div>
+      </div>
+      <!-- Search bar -->
+      <div style="flex:1;background:white;border-radius:6px;padding:8px 12px;display:flex;align-items:center;gap:8px;">
+        <span style="color:#999;font-size:14px;">🔍</span>
+        <input type="text" placeholder="搜索" style="border:none;outline:none;background:transparent;flex:1;font-size:14px;color:#333;">
+      </div>
+    </div>
+
+    <!-- Chat list -->
+    <div style="background:white;">
+      <!-- Chat item 1 -->
+      <div style="padding:12px 16px;display:flex;align-items:center;border-bottom:1px solid #F0F0F0;cursor:pointer;">
+        <div style="width:48px;height:48px;background:#5856D6;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-right:12px;">
+          <span style="color:white;font-size:18px;font-weight:500;">G</span>
+        </div>
+        <div style="flex:1;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="color:#333;font-size:16px;font-weight:500;">群聊名称</span>
+            <span style="color:#999;font-size:11px;">刚刚</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#999;font-size:13px;">最后一条消息内容预览...</span>
+            <span style="background:#07C160;color:white;font-size:10px;padding:2px 6px;border-radius:10px;">99+</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat item 2 -->
+      <div style="padding:12px 16px;display:flex;align-items:center;border-bottom:1px solid #F0F0F0;cursor:pointer;">
+        <div style="width:48px;height:48px;background:#10A37F;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-right:12px;">
+          <span style="color:white;font-size:18px;font-weight:500;">A</span>
+        </div>
+        <div style="flex:1;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="color:#333;font-size:16px;font-weight:500;">另一个群聊</span>
+            <span style="color:#999;font-size:11px;">昨天</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#999;font-size:13px;">最后一条消息内容预览...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat item 3 -->
+      <div style="padding:12px 16px;display:flex;align-items:center;border-bottom:1px solid #F0F0F0;cursor:pointer;">
+        <div style="width:48px;height:48px;background:#FF9500;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-right:12px;">
+          <span style="color:white;font-size:18px;font-weight:500;">T</span>
+        </div>
+        <div style="flex:1;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="color:#333;font-size:16px;font-weight:500;">技术讨论组</span>
+            <span style="color:#999;font-size:11px;">周一</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#999;font-size:13px;">最后一条消息内容预览...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat item 4 -->
+      <div style="padding:12px 16px;display:flex;align-items:center;border-bottom:1px solid #F0F0F0;cursor:pointer;">
+        <div style="width:48px;height:48px;background:#FF3B30;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-right:12px;">
+          <span style="color:white;font-size:18px;font-weight:500;">P</span>
+        </div>
+        <div style="flex:1;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="color:#333;font-size:16px;font-weight:500;">项目群</span>
+            <span style="color:#999;font-size:11px;">5月10日</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#999;font-size:13px;">最后一条消息内容预览...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section">
+  <h3>功能说明</h3>
+  <div style="color:#666;font-size:14px;line-height:1.8;">
+    <p><strong>右上角 (+)：</strong>点击展开下拉菜单，可选择：发起群聊、添加朋友、扫一扫等操作</p>
+    <p><strong>搜索框：</strong>位于顶部中央，支持搜索聊天记录和联系人</p>
+    <p><strong>聊天列表：</strong>显示群聊头像、名称、最后消息预览、时间和未读数</p>
+    <p><strong>整体风格：</strong>浅灰色背景 + 白色聊天条目，圆角矩形头像</p>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="ok" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content">
+      <h3>确认设计</h3>
+      <p>采用此布局，开始实现</p>
+    </div>
+  </div>
+  <div class="option" data-choice="modify" onclick="toggleSelect(this)">
+    <div class="letter">✎</div>
+    <div class="content">
+      <h3>需要调整</h3>
+      <p>颜色、间距、元素等需要修改</p>
+    </div>
+  </div>
+</div>
+
+<p style="color:#888;font-size:13px;margin-top:16px;">💡 请在浏览器中点击选择，然后等待我的下一步操作</p>

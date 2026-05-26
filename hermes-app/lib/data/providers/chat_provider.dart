@@ -416,6 +416,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void _handleResumed(Map<String, dynamic> payload) {
     final messagesData = payload['messages'] as List? ?? [];
     final queueLength = payload['queueLength'] as int? ?? 0;
+    final hasMore = payload['hasMore'] as bool? ?? (messagesData.length >= 100);
 
     final historicalMessages = messagesData
         .map((json) => Message.fromJson(json))
@@ -430,6 +431,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(
       messages: [...newHistorical, ...state.messages],
       queueLength: queueLength,
+      hasMore: hasMore,
       initialLoadDone: true,
     );
   }

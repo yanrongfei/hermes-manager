@@ -93,6 +93,41 @@ class GatewayClient:
                     except json.JSONDecodeError:
                         continue
 
+    async def start_run(
+        self,
+        input_text: str,
+        model: str,
+        instructions: str,
+        conversation_history: List[dict],
+        session_id: Optional[str] = None,
+    ) -> dict:
+        """POST /v1/runs — start an agent run, return run metadata."""
+        payload = {
+            "input": input_text,
+            "model": model,
+            "instructions": instructions,
+            "conversation_history": conversation_history,
+        }
+        if session_id:
+            payload["session_id"] = session_id
+        resp = await self.client.post("/v1/runs", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def stream_run_events(self, run_id: str) -> AsyncGenerator[dict, None]:
+        """GET /v1/runs/{run_id}/events — SSE stream of structured agent events."""
+        async with self.client.stream("GET", f"/v1/runs/{run_id}/events") as resp:
+            async for line in resp.aiter_lines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith(":"):
+                    continue
+                if stripped.startswith("data: "):
+                    try:
+                        data = json.loads(stripped[6:])
+                        yield data
+                    except json.JSONDecodeError:
+                        continue
+
     async def close(self):
         """Close the HTTP client."""
         await self.client.aclose()

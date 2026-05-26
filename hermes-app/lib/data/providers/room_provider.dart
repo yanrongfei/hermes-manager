@@ -172,6 +172,34 @@ class RoomsNotifier extends StateNotifier<AsyncValue<List<Room>>> {
   void updateFromNotification(List<Room> rooms) {
     state = AsyncValue.data(rooms);
   }
+
+  /// Optimistically update a room's lastMessage and updatedAt, and reset unreadCount.
+  void updateRoomPreview(String roomId, String lastMessage, int updatedAt) {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    final updated = current.map((r) {
+      if (r.id != roomId) return r;
+      // Only update if the new data is more recent
+      if (r.updatedAt != null && updatedAt <= r.updatedAt!) return r;
+      return Room(
+        id: r.id, name: r.name, avatar: r.avatar, ownerId: r.ownerId,
+        mode: r.mode, agentId: r.agentId, profileId: r.profileId,
+        inviteCode: r.inviteCode, createdAt: r.createdAt, type: r.type,
+        memberCount: r.memberCount, onlineCount: r.onlineCount,
+        lastMessage: lastMessage, updatedAt: updatedAt,
+        hasRunningTasks: r.hasRunningTasks, runningTasksCount: r.runningTasksCount,
+        unreadCount: 0,
+      );
+    }).toList();
+    // Re-sort by updatedAt descending
+    updated.sort((a, b) {
+      if (a.updatedAt == null && b.updatedAt == null) return 0;
+      if (a.updatedAt == null) return 1;
+      if (b.updatedAt == null) return -1;
+      return b.updatedAt!.compareTo(a.updatedAt!);
+    });
+    state = AsyncValue.data(updated);
+  }
 }
 
 final roomsProvider = StateNotifierProvider<RoomsNotifier, AsyncValue<List<Room>>>((ref) {

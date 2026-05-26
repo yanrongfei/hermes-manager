@@ -33,26 +33,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _showMentionPicker = false;
   String _mentionQuery = '';
   bool _showScrollBottom = false;
-  bool _initialScrollDone = false;
+  bool _isLoadingMoreHistory = false;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(() {
-      final show = _scrollController.hasClients &&
-          _scrollController.position.maxScrollExtent - _scrollController.offset > 200;
-      if (show != _showScrollBottom) setState(() => _showScrollBottom = show);
-    });
-
-    // Scroll to bottom on first load
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      debugPrint('[ChatScreen] initState postFrameCallback, messages: ${ref.read(chatProvider(widget.roomId)).messages.length}');
-      if (_scrollController.hasClients) {
-        final max = _scrollController.position.maxScrollExtent;
-        debugPrint('[ChatScreen] jumping to maxScrollExtent: $max');
-        _scrollController.jumpTo(max);
-      }
-    });
+    _scrollController.addListener(_onScroll);
 
     // Listen for agent_busy toast
     ref.listen(chatProvider(widget.roomId), (prev, next) {
@@ -69,6 +55,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           }
         });
       }
+    });
+  }
+
+  // With reverse: true on ListView:
+  // - offset 0 = bottom (newest messages)
+  // - maxScrollExtent = top (oldest messages)
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+
+    // Show scroll-to-bottom button when user has scrolled up away from bottom
+    final show = _scrollController.offset > 200;
+    if (show != _showScrollBottom) setState(() => _showScrollBottom = show);
+
+    // Load more when near top (oldest messages)
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    if (maxExtent - _scrollController.offset < 200 && !_isLoadingMoreHistory) {
+      final chatState = ref.read(chatProvider(widget.roomId));
+      if (chatState.hasMore && !chatState.isLoadingMore && chatState.messages.isNotEmpty) {
+        _loadMoreMessages();
+      }
+    }
+  }
+
+  Future<void> _loadMoreMessages() async {
+    if (_isLoadingMoreHistory) return;
+    _isLoadingMoreHistory = true;
+    ref.read(chatProvider(widget.roomId).notifier).loadMore();
+    // Wait for state update and next frame
+    await Future.delayed(const Duration(milliseconds: 100));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _isLoadingMoreHistory = false;
     });
   }
 
@@ -90,17 +107,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   bool get _is1v1 => _currentRoom?.is1v1 ?? widget.roomName != null;
 
-  void _scrollToBottom() {
-    debugPrint('[ChatScreen] _scrollToBottom called, hasClients: ${_scrollController.hasClients}, initialScrollDone: $_initialScrollDone');
-    if (_scrollController.hasClients && !_initialScrollDone) {
-      _initialScrollDone = true;
-      final maxExtent = _scrollController.position.maxScrollExtent;
-      debugPrint('[ChatScreen] maxScrollExtent: $maxExtent');
-      _scrollController.animateTo(
-        maxExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+  void _syncLastMessageToRoomList() {
+    ref.read(roomsProvider.notifier).markRoomRead(widget.roomId);
+    final chatState = ref.read(chatProvider(widget.roomId));
+    final messages = chatState.messages;
+    if (messages.isEmpty) return;
+    for (int i = messages.length - 1; i >= 0; i--) {
+      final m = messages[i];
+      if (!m.isStreaming && m.content.trim().isNotEmpty) {
+        ref.read(roomsProvider.notifier).updateRoomPreview(
+          widget.roomId,
+          m.content.replaceAll('\n', ' ').trim(),
+          m.createdAt,
+        );
+        return;
+      }
     }
   }
 
@@ -111,6 +132,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     ref.read(chatProvider(widget.roomId).notifier).sendMessage(content);
     _messageController.clear();
     _showMentionPicker = false;
+    _focusNode.requestFocus();
   }
 
   void _sendAbort() {
@@ -185,27 +207,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final hasRunningAgents = chatState.runningAgents.isNotEmpty;
     final isAborting = chatState.compressingStatus != null;
 
-    // Auto-scroll to bottom on initial load (WebSocket resume)
-    ref.listen(chatProvider(widget.roomId), (prev, next) {
-      // Initial WebSocket resume complete - scroll to bottom
-      if (prev != null && !prev.initialLoadDone && next.initialLoadDone && next.messages.isNotEmpty) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients) {
-            _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-          }
-        });
-      }
-      // New message added - scroll to bottom
-      else if (next.messages.length > (prev?.messages.length ?? 0)) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients) {
-            _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-          }
-        });
-      }
-    });
-
-    return Scaffold(
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) _syncLastMessageToRoomList();
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFF212121),
       appBar: _is1v1 ? _build1v1AppBar() : _buildGroupAppBar(),
       body: Column(
@@ -237,7 +243,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ),
 
-          // Messages
+          // Messages - reverse ListView for WeChat-like behavior
           Expanded(
             child: Stack(
               children: [
@@ -267,23 +273,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               style: TextStyle(color: Colors.grey[600], fontSize: 16),
                             ),
                           )
-                        : ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            itemCount: chatState.messages.length,
-                            itemBuilder: (context, index) {
-                              final message = chatState.messages[index];
-                              final toolCalls = chatState.toolCalls[message.id];
-                              final thinkingMs = chatState.thinkingStartedAt[message.id] != null
-                                  ? DateTime.now().millisecondsSinceEpoch - chatState.thinkingStartedAt[message.id]!
-                                  : null;
-                              return MessageBubble(
-                                message: message,
-                                toolCalls: toolCalls,
-                                thinkingDurationMs: message.isStreaming ? thinkingMs : null,
-                              );
-                            },
-                          ),
+                        : _buildMessageList(chatState),
                 if (_showScrollBottom)
                   Positioned(
                     right: 16,
@@ -292,7 +282,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       backgroundColor: const Color(0xFF2A2A2A),
                       onPressed: () {
                         _scrollController.animateTo(
-                          _scrollController.position.maxScrollExtent,
+                          0,
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeOut,
                         );
@@ -318,6 +308,55 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _buildInputBar(),
         ],
       ),
+      ),
+    );
+  }
+
+  /// Reversed ListView: newest messages at bottom, oldest at top.
+  /// - reverse: true → ListView renders bottom-to-top, starts at offset 0 (bottom)
+  /// - Messages are reversed: index 0 = newest (at bottom), index N = oldest (at top)
+  /// - Load-more indicator at the very top (end of reversed list)
+  /// - No scroll hack needed: naturally starts showing latest messages
+  Widget _buildMessageList(ChatState chatState) {
+    final reversedMessages = chatState.messages.reversed.toList();
+    final itemCount = reversedMessages.length + (chatState.hasMore ? 1 : 0);
+
+    return ListView.builder(
+      controller: _scrollController,
+      reverse: true,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      itemCount: itemCount,
+      itemBuilder: (context, index) {
+        // Load-more indicator at the top (end of reversed list)
+        if (index == reversedMessages.length) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+              child: chatState.isLoadingMore
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      '上拉加载更多',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+            ),
+          );
+        }
+
+        final message = reversedMessages[index];
+        final toolCalls = chatState.toolCalls[message.id];
+        final thinkingMs = chatState.thinkingStartedAt[message.id] != null
+            ? DateTime.now().millisecondsSinceEpoch - chatState.thinkingStartedAt[message.id]!
+            : null;
+        return MessageBubble(
+          message: message,
+          toolCalls: toolCalls,
+          thinkingDurationMs: message.isStreaming ? thinkingMs : null,
+        );
+      },
     );
   }
 
@@ -365,7 +404,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
                 onChanged: _onTextChanged,
                 onSubmitted: (_) {
-                  debugPrint('TextField onSubmitted called');
                   _sendMessage();
                 },
               ),
@@ -386,7 +424,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       backgroundColor: const Color(0xFF2A2A2A),
       leading: IconButton(
         icon: const Icon(Icons.arrow_back, color: Color(0xFFECECEC)),
-        onPressed: () => context.pop(),
+        onPressed: () {
+          _syncLastMessageToRoomList();
+          context.pop();
+        },
       ),
       title: Text(
         _getDisplayName().isNotEmpty ? _getDisplayName() : '对话',
@@ -404,6 +445,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   PreferredSizeWidget _buildGroupAppBar() {
     return AppBar(
       backgroundColor: const Color(0xFF2A2A2A),
+      automaticallyImplyLeading: true,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Color(0xFFECECEC)),
+        onPressed: () {
+          _syncLastMessageToRoomList();
+          context.pop();
+        },
+      ),
       title: GestureDetector(
         onTap: () => _showEditNameDialog(context),
         child: Row(
@@ -520,36 +569,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 Navigator.pop(context);
                 // TODO: show invite code
               },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAttachmentSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF2A2A2A),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.image, color: Color(0xFF5856D6)),
-              title: const Text('图片', style: TextStyle(color: Color(0xFFECECEC))),
-              onTap: () => Navigator.pop(context),
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt, color: Color(0xFF5856D6)),
-              title: const Text('拍照', style: TextStyle(color: Color(0xFFECECEC))),
-              onTap: () => Navigator.pop(context),
-            ),
-            ListTile(
-              leading: const Icon(Icons.insert_drive_file, color: Color(0xFF5856D6)),
-              title: const Text('文件', style: TextStyle(color: Color(0xFFECECEC))),
-              onTap: () => Navigator.pop(context),
             ),
           ],
         ),

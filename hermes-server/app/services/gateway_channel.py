@@ -51,6 +51,22 @@ class GatewayChannel:
         ):
             yield event
 
+    async def start_run(
+        self,
+        input_text: str,
+        model: str,
+        instructions: str,
+        history: List[dict],
+        session_id: Optional[str] = None,
+    ) -> dict:
+        http = await self._get_http()
+        return await http.start_run(input_text, model, instructions, history, session_id)
+
+    async def stream_run_events(self, run_id: str) -> AsyncGenerator[dict, None]:
+        http = await self._get_http()
+        async for event in http.stream_run_events(run_id):
+            yield event
+
     async def close(self):
         if self._http_client:
             await self._http_client.close()

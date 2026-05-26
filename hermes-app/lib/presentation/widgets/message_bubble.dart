@@ -145,7 +145,16 @@ class _BubbleContent extends StatelessWidget {
             : null,
       ),
       child: message.content.isEmpty && message.isStreaming
-          ? const _StreamingDots(size: 6)
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const _StreamingDots(size: 6),
+                if (message.reasoning != null && message.reasoning!.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Text('思考中...', style: TextStyle(color: Colors.green[400], fontSize: 13)),
+                ],
+              ],
+            )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -453,6 +462,52 @@ class _StreamingCursorState extends State<_StreamingCursor> with SingleTickerPro
   }
 }
 
+// --- Pulsing dot for streaming thinking indicator ---
+
+class _PulsingDot extends StatefulWidget {
+  const _PulsingDot();
+
+  @override
+  State<_PulsingDot> createState() => _PulsingDotState();
+}
+
+class _PulsingDotState extends State<_PulsingDot> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(duration: const Duration(milliseconds: 1200), vsync: this)..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) => Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.green.withOpacity(0.5 + _controller.value * 0.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.green.withOpacity(0.3 + _controller.value * 0.3),
+              blurRadius: 4 + _controller.value * 4,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // --- Thinking/Reasoning ---
 
 class _ThinkingBlock extends StatefulWidget {
@@ -471,14 +526,16 @@ class _ThinkingBlock extends StatefulWidget {
 }
 
 class _ThinkingBlockState extends State<_ThinkingBlock> {
-  bool _expanded = false;
+  late bool _expanded;
+  bool _userToggled = false;
   Timer? _timer;
   int _elapsedSeconds = 0;
 
   @override
   void initState() {
     super.initState();
-    if (widget.isStreaming && widget.durationMs == null) {
+    _expanded = widget.isStreaming; // Auto-expand during streaming
+    if (widget.isStreaming) {
       _startTimer();
     }
   }
@@ -488,8 +545,10 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
     super.didUpdateWidget(oldWidget);
     if (widget.isStreaming && !oldWidget.isStreaming) {
       _startTimer();
+      if (!_userToggled) setState(() => _expanded = true);
     } else if (!widget.isStreaming && oldWidget.isStreaming) {
       _stopTimer();
+      if (!_userToggled) setState(() => _expanded = false);
     }
   }
 
@@ -539,43 +598,69 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
-          onTap: () => setState(() => _expanded = !_expanded),
+          onTap: () {
+            setState(() {
+              _userToggled = true;
+              _expanded = !_expanded;
+            });
+          },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Header row
                 Row(
                   children: [
-                    const Text('💭', style: TextStyle(fontSize: 12)),
+                    if (widget.isStreaming)
+                      const _PulsingDot()
+                    else
+                      const Text('💭', style: TextStyle(fontSize: 12)),
                     const SizedBox(width: 6),
                     Text(
-                      _expanded ? '收起思考过程' : '思考过程',
-                      style: TextStyle(color: Colors.grey[400], fontSize: 12, fontWeight: FontWeight.w500),
+                      widget.isStreaming
+                          ? '思考中...'
+                          : (_expanded ? '收起思考过程' : '思考过程'),
+                      style: TextStyle(
+                        color: widget.isStreaming ? Colors.green[400] : Colors.grey[400],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                    if (widget.isStreaming) ...[
-                      const SizedBox(width: 6),
-                      const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, valueColor: AlwaysStoppedAnimation(Colors.orange))),
-                    ],
                     const SizedBox(width: 6),
                     Text('· $durationStr', style: TextStyle(color: Colors.grey[600], fontSize: 11)),
                     const SizedBox(width: 6),
                     Text('· $charCount 字符', style: TextStyle(color: Colors.grey[600], fontSize: 11)),
                     const Spacer(),
-                    Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 16, color: Colors.grey[600]),
+                    AnimatedRotation(
+                      turns: _expanded ? 0.0 : 0.5,
+                      duration: const Duration(milliseconds: 150),
+                      child: Icon(Icons.expand_less, size: 16, color: Colors.grey[600]),
+                    ),
                   ],
                 ),
-                if (_expanded) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      border: Border(left: BorderSide(color: Colors.grey[700]!, width: 2)),
-                    ),
-                    child: _MarkdownContent(content: widget.reasoning),
-                  ),
-                ],
+                // Expandable content with animation
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  alignment: Alignment.topCenter,
+                  child: _expanded
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 8),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                border: Border(left: BorderSide(color: Colors.grey[700]!, width: 2)),
+                              ),
+                              child: _MarkdownContent(content: widget.reasoning),
+                            ),
+                          ],
+                        )
+                      : const SizedBox(width: double.infinity, height: 0),
+                ),
               ],
             ),
           ),
@@ -598,7 +683,24 @@ class _ThinkingContent extends StatefulWidget {
 }
 
 class _ThinkingContentState extends State<_ThinkingContent> {
-  bool _expanded = false;
+  late bool _expanded;
+  bool _userToggled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.isStreaming; // Auto-expand during streaming
+  }
+
+  @override
+  void didUpdateWidget(_ThinkingContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isStreaming && !oldWidget.isStreaming) {
+      if (!_userToggled) setState(() => _expanded = true);
+    } else if (!widget.isStreaming && oldWidget.isStreaming) {
+      if (!_userToggled) setState(() => _expanded = false);
+    }
+  }
 
   String _extractThinkingText() {
     final parsed = parseThinkingFromContent(widget.content, isStreaming: widget.isStreaming);
@@ -612,15 +714,10 @@ class _ThinkingContentState extends State<_ThinkingContent> {
     return parts.join('\n\n');
   }
 
-  int _getThinkingCharCount() {
-    final thinking = _extractThinkingText();
-    return thinking.codeUnits.length;
-  }
-
   @override
   Widget build(BuildContext context) {
     final thinkingText = _extractThinkingText();
-    final charCount = _getThinkingCharCount();
+    final charCount = thinkingText.length;
 
     return Container(
       margin: const EdgeInsets.only(left: 48, top: 4),
@@ -629,7 +726,12 @@ class _ThinkingContentState extends State<_ThinkingContent> {
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
-          onTap: () => setState(() => _expanded = !_expanded),
+          onTap: () {
+            setState(() {
+              _userToggled = true;
+              _expanded = !_expanded;
+            });
+          },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Column(
@@ -637,33 +739,52 @@ class _ThinkingContentState extends State<_ThinkingContent> {
               children: [
                 Row(
                   children: [
-                    const Text('💭', style: TextStyle(fontSize: 12)),
+                    if (widget.isStreaming)
+                      const _PulsingDot()
+                    else
+                      const Text('💭', style: TextStyle(fontSize: 12)),
                     const SizedBox(width: 6),
                     Text(
-                      _expanded ? '收起思考过程' : '思考过程',
-                      style: TextStyle(color: Colors.grey[400], fontSize: 12, fontWeight: FontWeight.w500),
+                      widget.isStreaming
+                          ? '思考中...'
+                          : (_expanded ? '收起思考过程' : '思考过程'),
+                      style: TextStyle(
+                        color: widget.isStreaming ? Colors.green[400] : Colors.grey[400],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                    if (widget.isStreaming) ...[
-                      const SizedBox(width: 6),
-                      const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, valueColor: AlwaysStoppedAnimation(Colors.orange))),
-                    ],
                     const SizedBox(width: 6),
                     Text('· $charCount 字符', style: TextStyle(color: Colors.grey[600], fontSize: 11)),
                     const Spacer(),
-                    Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 16, color: Colors.grey[600]),
+                    AnimatedRotation(
+                      turns: _expanded ? 0.0 : 0.5,
+                      duration: const Duration(milliseconds: 150),
+                      child: Icon(Icons.expand_less, size: 16, color: Colors.grey[600]),
+                    ),
                   ],
                 ),
-                if (_expanded) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      border: Border(left: BorderSide(color: Colors.grey[700]!, width: 2)),
-                    ),
-                    child: _MarkdownContent(content: thinkingText),
-                  ),
-                ],
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  alignment: Alignment.topCenter,
+                  child: _expanded
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 8),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                border: Border(left: BorderSide(color: Colors.grey[700]!, width: 2)),
+                              ),
+                              child: _MarkdownContent(content: thinkingText),
+                            ),
+                          ],
+                        )
+                      : const SizedBox(width: double.infinity, height: 0),
+                ),
               ],
             ),
           ),

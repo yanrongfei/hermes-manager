@@ -454,6 +454,7 @@ async def websocket_chat(
                     "data": {
                         "roomId": room_id,
                         "messages": [MessageResponse.model_validate(m).model_dump() for m in messages],
+                        "hasMore": has_more,
                         "isWorking": room_id in active_executors and bool(active_executors[room_id]),
                         "queueLength": len(message_queues.get(room_id, [])),
                     }

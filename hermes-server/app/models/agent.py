@@ -1,3 +1,4 @@
+import time
 from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -18,7 +19,7 @@ class Agent(Base):
     description = Column(String, nullable=True)
     avatar = Column(String, nullable=True)
     invited = Column(Boolean, default=False)
-    created_at = Column(Integer, default=lambda: int(datetime.utcnow().timestamp()))
+    created_at = Column(Integer, default=lambda: int(time.time()))
 
     profile = relationship("Profile", back_populates="agents")
     rooms = relationship("RoomAgent", back_populates="agent")
@@ -30,7 +31,7 @@ class RoomAgent(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     room_id = Column(String, ForeignKey("rooms.id"), nullable=False)
     agent_id = Column(String, ForeignKey("agents.id"), nullable=False)
-    joined_at = Column(Integer, default=lambda: int(datetime.utcnow().timestamp()))
+    joined_at = Column(Integer, default=lambda: int(time.time()))
 
     room = relationship("Room", back_populates="agents")
     agent = relationship("Agent", back_populates="rooms")

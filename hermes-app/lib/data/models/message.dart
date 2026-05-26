@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'attachment.dart';
+import 'content_block.dart';
+
 enum ToolStatus { pending, running, completed, error }
 
 class ToolCall {
@@ -51,6 +55,10 @@ class Message {
   final int? inputTokens;
   final int? outputTokens;
   final String? error;
+  final List<Attachment>? attachments;
+  final List<ContentBlock>? contentBlocks;
+  final bool? isHighlighted;
+  final bool? isCommand;
 
   Message({
     required this.id,
@@ -69,31 +77,73 @@ class Message {
     this.inputTokens,
     this.outputTokens,
     this.error,
+    this.attachments,
+    this.contentBlocks,
+    this.isHighlighted,
+    this.isCommand,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
+    String? reasoning;
+    if (json['reasoning'] != null) {
+      reasoning = json['reasoning'] as String?;
+    } else if (json['extra'] != null) {
+      try {
+        final extraJson = jsonDecode(json['extra'] as String) as Map<String, dynamic>;
+        // Try both 'reasoning' and 'reasoning_content' field names
+        reasoning = (extraJson['reasoning'] ?? extraJson['reasoning_content']) as String?;
+      } catch (_) {}
+    }
+
+    List<Attachment>? attachments;
+    List<ContentBlock>? contentBlocks;
+    if (json['extra'] != null) {
+      try {
+        final extraJson = jsonDecode(json['extra'] as String);
+        if (extraJson is Map<String, dynamic>) {
+          if (extraJson['attachments'] != null) {
+            attachments = (extraJson['attachments'] as List)
+                .map((a) => Attachment.fromJson(a as Map<String, dynamic>))
+                .toList();
+          }
+          if (extraJson['content_blocks'] != null) {
+            contentBlocks = (extraJson['content_blocks'] as List)
+                .map((b) => ContentBlock.fromJson(b as Map<String, dynamic>))
+                .toList();
+          }
+        }
+      } catch (_) {}
+    }
+
     return Message(
       id: json['id'] as String,
-      roomId: json['roomId'] as String,
-      senderId: json['senderId'] as String?,
-      senderType: json['senderType'] as String?,
-      senderName: json['senderName'] as String?,
-      content: json['content'] as String? ?? '',
-      contentType: json['contentType'] as String? ?? 'text',
+      roomId: (json['roomId'] ?? json['room_id']) as String,
+      senderId: (json['senderId'] ?? json['sender_id']) as String?,
+      senderType: (json['senderType'] ?? json['sender_type']) as String?,
+      senderName: (json['senderName'] ?? json['sender_name']) as String?,
+      content: (json['content'] as String?) ?? '',
+      contentType: (json['contentType'] ?? json['content_type']) as String? ?? 'text',
       extra: json['extra'] as String?,
-      parentId: json['parentId'] as String?,
-      createdAt: json['createdAt'] as int,
-      isStreaming: json['isStreaming'] as bool? ?? false,
-      isAborted: json['isAborted'] as bool? ?? false,
-      reasoning: json['reasoning'],
-      inputTokens: json['inputTokens'],
-      outputTokens: json['outputTokens'],
+      parentId: (json['parentId'] ?? json['parent_id']) as String?,
+      createdAt: (json['createdAt'] ?? json['created_at']) as int,
+      isStreaming: (json['isStreaming'] ?? json['is_streaming']) as bool? ?? false,
+      isAborted: (json['isAborted'] ?? json['is_aborted']) as bool? ?? false,
+      reasoning: reasoning,
+      inputTokens: json['inputTokens'] ?? json['input_tokens'],
+      outputTokens: json['outputTokens'] ?? json['output_tokens'],
       error: json['error'],
+      attachments: attachments,
+      contentBlocks: contentBlocks,
+      isHighlighted: json['is_highlighted'] as bool? ?? json['isHighlighted'] as bool?,
+      isCommand: json['is_command'] as bool? ?? json['isCommand'] as bool?,
     );
   }
 
   bool get isFromUser => senderType == 'user';
   bool get isFromAgent => senderType == 'agent';
+  bool get isCommandMessage => isCommand == true || (content.startsWith('/') && isFromUser);
+  bool get hasAttachments => attachments != null && attachments!.isNotEmpty;
+  bool get hasContentBlocks => contentBlocks != null && contentBlocks!.isNotEmpty;
 
   Message copyWith({
     String? id,
@@ -112,6 +162,10 @@ class Message {
     int? inputTokens,
     int? outputTokens,
     String? error,
+    List<Attachment>? attachments,
+    List<ContentBlock>? contentBlocks,
+    bool? isHighlighted,
+    bool? isCommand,
   }) {
     return Message(
       id: id ?? this.id,
@@ -130,6 +184,10 @@ class Message {
       inputTokens: inputTokens ?? this.inputTokens,
       outputTokens: outputTokens ?? this.outputTokens,
       error: error ?? this.error,
+      attachments: attachments ?? this.attachments,
+      contentBlocks: contentBlocks ?? this.contentBlocks,
+      isHighlighted: isHighlighted ?? this.isHighlighted,
+      isCommand: isCommand ?? this.isCommand,
     );
   }
 }

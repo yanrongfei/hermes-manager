@@ -1,3 +1,4 @@
+import time
 from sqlalchemy import Column, String, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -20,7 +21,7 @@ class Profile(Base):
     skills = Column(Integer, default=0)
     description = Column(String, nullable=True)
     synced_at = Column(Integer, nullable=True)
-    created_at = Column(Integer, default=lambda: int(datetime.utcnow().timestamp()))
+    created_at = Column(Integer, default=lambda: int(time.time()))
 
     gateway = relationship("Gateway", back_populates="profiles")
     agents = relationship("Agent", back_populates="profile", cascade="all, delete-orphan")

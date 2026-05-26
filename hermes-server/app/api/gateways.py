@@ -1,5 +1,6 @@
 """Gateway Management and Proxy API."""
 
+import time
 import httpx
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Request
@@ -237,7 +238,7 @@ async def create_gateway(
     if not is_healthy:
         raise AppException(ErrorCode.GATEWAY_UNREACHABLE, f"网关 {data.address} 无法连接", status_code=400)
 
-    now = int(__import__("datetime").datetime.utcnow().timestamp())
+    now = int(time.time())
     gateway = Gateway(
         user_id=current_user.id,
         name=data.name,
@@ -337,8 +338,8 @@ async def test_gateway(
         is_healthy = await channel.health_check()
         gw.status = "online" if is_healthy else "offline"
         if is_healthy:
-            import datetime
-            gw.last_seen = int(datetime.datetime.utcnow().timestamp())
+            import time
+            gw.last_seen = int(time.time())
         await db.commit()
         return {"gateway_id": gateway_id, "online": is_healthy}
     finally:

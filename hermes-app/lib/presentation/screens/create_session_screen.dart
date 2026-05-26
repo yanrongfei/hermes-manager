@@ -13,7 +13,6 @@ class CreateSessionScreen extends ConsumerStatefulWidget {
 }
 
 class _CreateSessionScreenState extends ConsumerState<CreateSessionScreen> {
-  final _nameController = TextEditingController();
   final Set<String> _selectedAgentIds = {};
   String _selectedMode = 'broadcast';
   bool _isCreating = false;
@@ -26,12 +25,6 @@ class _CreateSessionScreenState extends ConsumerState<CreateSessionScreen> {
   void initState() {
     super.initState();
     _fetchAgents();
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
   }
 
   Future<void> _fetchAgents() async {
@@ -47,7 +40,16 @@ class _CreateSessionScreenState extends ConsumerState<CreateSessionScreen> {
 
   bool get _isSingleSelection => _selectedAgentIds.length == 1;
   bool get _isMultiSelection => _selectedAgentIds.length >= 2;
-  bool get _canCreate => _nameController.text.isNotEmpty && _selectedAgentIds.isNotEmpty;
+  bool get _canCreate => _selectedAgentIds.isNotEmpty;
+
+  String get _roomName {
+    if (_isSingleSelection) {
+      final agent = _agents.firstWhere((a) => a.profile == _selectedAgentIds.first);
+      return '与 ${agent.profile} 的对话';
+    }
+    final names = _selectedAgentIds.toList();
+    return '群聊 ${names.take(3).join(', ')}${names.length > 3 ? '...' : ''}';
+  }
 
   String get _buttonText {
     if (_isSingleSelection) {
@@ -60,16 +62,16 @@ class _CreateSessionScreenState extends ConsumerState<CreateSessionScreen> {
   Future<void> _createSession() async {
     if (!_canCreate || _isCreating) return;
 
-    setState(() => _isCreating = true);
+    setState(() { _isCreating = true; });
     try {
       final mode = _isSingleSelection ? 'direct' : _selectedMode;
       final room = await ref.read(roomsProvider.notifier).createRoom(
-        name: _nameController.text,
+        name: _roomName,
         agentIds: _selectedAgentIds.toList(),
         mode: mode,
       );
       if (mounted) {
-        context.push('/chat/${room.id}?name=${Uri.encodeComponent(room.name)}');
+        context.pushReplacement('/chat/${room.id}?name=${Uri.encodeComponent(room.name)}');
       }
     } catch (e) {
       if (mounted) {
@@ -78,7 +80,7 @@ class _CreateSessionScreenState extends ConsumerState<CreateSessionScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isCreating = false);
+      if (mounted) setState(() { _isCreating = false; });
     }
   }
 
@@ -92,7 +94,7 @@ class _CreateSessionScreenState extends ConsumerState<CreateSessionScreen> {
           icon: const Icon(Icons.arrow_back, color: Color(0xFFECECEC)),
           onPressed: () => context.pop(),
         ),
-        title: const Text('新建会话', style: TextStyle(color: Color(0xFFECECEC))),
+        title: const Text('新建对话', style: TextStyle(color: Color(0xFFECECEC))),
         actions: [
           IconButton(
             icon: const Icon(Icons.close, color: Color(0xFFECECEC)),
@@ -122,30 +124,6 @@ class _CreateSessionScreenState extends ConsumerState<CreateSessionScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Name input
-                            const Text(
-                              '会话名称',
-                              style: TextStyle(color: Color(0xFFB0B0B0), fontSize: 13),
-                            ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: _nameController,
-                              style: const TextStyle(color: Color(0xFFECECEC)),
-                              decoration: InputDecoration(
-                                hintText: '输入会话名称',
-                                hintStyle: const TextStyle(color: Color(0xFF8E8E93)),
-                                filled: true,
-                                fillColor: const Color(0xFF343541),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                              ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                            const SizedBox(height: 24),
-
                             // Agent selection header
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,

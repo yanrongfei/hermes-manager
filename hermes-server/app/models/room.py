@@ -1,3 +1,4 @@
+import time
 from sqlalchemy import Column, String, Integer, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -16,8 +17,9 @@ class Room(Base):
     max_history_tokens = Column(Integer, default=32000)
     tail_message_count = Column(Integer, default=20)
     invite_code = Column(String, nullable=True)
+    agent_id = Column(String, nullable=True)  # For 1:1 chats: the associated agent ID
     profile_id = Column(String, ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)  # For 1:1 chats
-    created_at = Column(Integer, default=lambda: int(datetime.utcnow().timestamp()))
+    created_at = Column(Integer, default=lambda: int(time.time()))
 
     # Relationships
     owner = relationship("User", foreign_keys=[owner_id])
@@ -32,7 +34,7 @@ class RoomMember(Base):
     room_id = Column(String, ForeignKey("rooms.id"), nullable=False)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     role = Column(String, default="member")  # owner/admin/member
-    joined_at = Column(Integer, default=lambda: int(datetime.utcnow().timestamp()))
+    joined_at = Column(Integer, default=lambda: int(time.time()))
 
     # Relationships
     room = relationship("Room", back_populates="members")

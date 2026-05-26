@@ -6,32 +6,39 @@ export class LoginPage {
   readonly passwordInput: Locator;
   readonly loginButton: Locator;
   readonly registerLink: Locator;
-  readonly errorMessage: Locator;
 
   constructor(page: Page) {
     this.page = page;
-    this.usernameInput = page.locator('input[type="text"], input[type="email"], input').first();
-    this.passwordInput = page.locator('input[type="password"]').first();
-    this.loginButton = page.locator('button[type="submit"], button:has-text("Login"), button:has-text("登录")').first();
-    this.registerLink = page.locator('button:has-text("Register"), a:has-text("Register"), button:has-text("注册")').first();
-    this.errorMessage = page.locator('text=错误, text=Invalid, text=Failed, text=登录失败').first();
+    // Flutter Web renders <input> elements for text fields
+    this.usernameInput = page.locator('input').first();
+    this.passwordInput = page.locator('input[type="password"], input').nth(1);
+    this.loginButton = page.locator('button, [role="button"]').first();
+    this.registerLink = page.locator('text=没有账号').first();
   }
 
   async goto() {
-    await this.page.goto('http://localhost:3003/#/login');
+    await this.page.route('**/flutter_service_worker.js', (route) => route.abort());
+    await this.page.goto('http://localhost:3003/#/login', { waitUntil: 'load' });
+    await this.page.waitForSelector('flutter-view', { timeout: 30000 });
+    await this.page.waitForTimeout(3000);
   }
 
   async login(username: string, password: string) {
-    await this.usernameInput.fill(username);
-    await this.passwordInput.fill(password);
-    await this.loginButton.click();
+    const inputs = await this.page.locator('input').all();
+    if (inputs.length >= 2) {
+      await inputs[0].fill(username);
+      await inputs[1].fill(password);
+    }
+    await this.page.keyboard.press('Enter');
+    await this.page.waitForTimeout(3000);
+  }
+
+  async expectOnLoginPage() {
+    await expect(this.page).toHaveURL(/\/login/);
   }
 
   async expectRedirectToHome() {
-    await expect(this.page).toHaveURL(/\/home/);
-  }
-
-  async expectLoginButton() {
-    await expect(this.loginButton).toBeVisible();
+    await this.page.waitForURL(/\/home/, { timeout: 10000 }).catch(() => {});
+    expect(this.page.url()).toMatch(/\/home/);
   }
 }

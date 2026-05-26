@@ -1,51 +1,59 @@
 import { test, expect } from '@playwright/test';
-
-async function waitForFlutter(page: any) {
-  await page.waitForSelector('flutter-view', { timeout: 30000 });
-  await page.waitForTimeout(2000);
-}
-
-async function login(page: any) {
-  await page.route('**/flutter_service_worker.js', route => route.abort());
-  await page.goto('http://localhost:3003/#/login', { waitUntil: 'load' });
-  await waitForFlutter(page);
-
-  const inputs = await page.locator('input').all();
-  if (inputs.length >= 1) await inputs[0].fill('testuser');
-  if (inputs.length >= 2) await inputs[1].fill('testpass123');
-
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(2000);
-}
+import { setupAuthenticatedPage, waitForText } from '../helpers';
 
 test.describe('P0 - 导航测试', () => {
-  test('Tab 切换', async ({ page }) => {
+  test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await login(page);
-
-    // Verify we're in the app (either home or chat)
-    const url = page.url();
-    expect(url.includes('/home') || url.includes('/chat') || url.includes('/login')).toBeTruthy();
-  });
-});
-
-test.describe('P0 - 聊天功能', () => {
-  test('发送消息', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await login(page);
-
-    // Just verify we're in the app
-    const url = page.url();
-    console.log('Current URL:', url);
-    expect(url.includes('/home') || url.includes('/chat') || url.includes('/login')).toBeTruthy();
+    await setupAuthenticatedPage(page);
   });
 
-  test('消息列表自动滚动', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await login(page);
+  test('首页包含三个底部 Tab', async ({ page }) => {
+    // Use locator-based checks (accessibility tree), not page.content()
+    const chatTab = page.locator('text=对话').first();
+    const discoverTab = page.locator('text=发现').first();
+    const profileTab = page.locator('text=我的').first();
 
-    // Just verify navigation works
-    const url = page.url();
-    expect(url.includes('/home') || url.includes('/chat') || url.includes('/login')).toBeTruthy();
+    await expect(chatTab).toBeVisible({ timeout: 5000 });
+    await expect(discoverTab).toBeVisible({ timeout: 5000 });
+    await expect(profileTab).toBeVisible({ timeout: 5000 });
+  });
+
+  test('默认显示对话 Tab', async ({ page }) => {
+    expect(page.url()).toMatch(/\/home/);
+
+    // Chat tab content: "Hermes" header or search bar
+    const hermes = page.locator('text=Hermes').first();
+    await expect(hermes).toBeVisible({ timeout: 5000 });
+  });
+
+  test('切换到发现 Tab 显示功能列表', async ({ page }) => {
+    await page.locator('text=发现').first().click();
+    await page.waitForTimeout(1500);
+
+    // Should show discover content
+    const gateway = page.locator('text=Gateway').first();
+    await expect(gateway).toBeVisible({ timeout: 5000 });
+  });
+
+  test('切换到我的 Tab 显示设置', async ({ page }) => {
+    await page.locator('text=我的').first().click();
+    await page.waitForTimeout(1500);
+
+    // Should show settings
+    const settings = page.locator('text=设置').first();
+    await expect(settings).toBeVisible({ timeout: 5000 });
+  });
+
+  test('Tab 之间来回切换', async ({ page }) => {
+    // Switch tabs sequentially
+    await page.locator('text=发现').first().click();
+    await page.waitForTimeout(800);
+    await page.locator('text=我的').first().click();
+    await page.waitForTimeout(800);
+    await page.locator('text=对话').first().click();
+    await page.waitForTimeout(800);
+
+    // Should still be on home page
+    expect(page.url()).toMatch(/\/home/);
   });
 });

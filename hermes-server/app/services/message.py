@@ -1,3 +1,4 @@
+import time
 from typing import List, Optional
 from sqlalchemy import select, and_, desc, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,7 +77,7 @@ class MessageService:
         query = select(Message).where(Message.room_id == room_id)
         if before:
             query = query.where(Message.created_at < before)
-        query = query.order_by(desc(Message.created_at)).limit(limit + 1)
+        query = query.order_by(desc(Message.created_at), desc(Message.id)).limit(limit + 1)
 
         result = await self.db.execute(query)
         messages = list(result.scalars().all())
@@ -97,6 +98,6 @@ class MessageService:
                     Message.created_at >= cutoff
                 )
             )
-            .order_by(Message.created_at)
+            .order_by(Message.created_at, Message.id)
         )
         return list(result.scalars().all())

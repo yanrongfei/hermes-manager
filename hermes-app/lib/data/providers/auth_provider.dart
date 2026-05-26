@@ -94,8 +94,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> checkAuth() async {
-    // Skip if login is in progress - prevents race condition where
-    // checkAuth() fails with old token and clears new token set by login()
     if (_isLoggingIn) return;
 
     final storage = _ref.read(storageProvider);
@@ -109,10 +107,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final response = await dio.get('/auth/me');
       state = AuthState(user: User.fromJson(response.data));
     } catch (e) {
-      // Token invalid or expired - but don't logout if login is in progress
-      // to avoid clearing newly set tokens
-      if (!_isLoggingIn) {
-        await logout();
+      // API failed — don't clear state. Token still in storage.
+      // The interceptor handles 401 with refresh. If refresh also failed,
+      // keep whatever state we have. The user stays in the app.
+      // Only clear if we explicitly detect no token remains.
+      final remaining = await storage.get(AppConfig.accessTokenKey);
+      if (remaining == null) {
+        state = AuthState();
       }
     }
   }

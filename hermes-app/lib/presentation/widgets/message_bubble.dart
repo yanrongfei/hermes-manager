@@ -1,10 +1,17 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:photo_view/photo_view.dart';
 import '../../data/models/message.dart';
+import '../../data/models/attachment.dart';
+import '../../data/models/content_block.dart';
+import '../../data/providers/tts_provider.dart';
+import '../../core/utils/thinking_parser.dart';
 
-class MessageBubble extends StatelessWidget {
+class MessageBubble extends ConsumerWidget {
   final Message message;
   final List<ToolCall>? toolCalls;
   final int? thinkingDurationMs;
@@ -19,7 +26,7 @@ class MessageBubble extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isUser = message.isFromUser;
     final agentName = message.senderName ?? 'Agent';
 
@@ -64,18 +71,27 @@ class MessageBubble extends StatelessWidget {
           if (toolCalls != null && toolCalls!.isNotEmpty)
             ...toolCalls!.map((tc) => _ToolCallLine(toolCall: tc)),
 
-          // Reasoning/Thinking
+          // Reasoning/Thinking - show if reasoning field populated OR content has thinking tags
           if (message.reasoning != null && message.reasoning!.isNotEmpty)
-            _ThinkingBlock(reasoning: message.reasoning!, durationMs: thinkingDurationMs),
+            _ThinkingBlock(
+              reasoning: message.reasoning!,
+              durationMs: thinkingDurationMs,
+              isStreaming: message.isStreaming,
+            )
+          else if (contentHasThinking(message.content, isStreaming: message.isStreaming))
+            _ThinkingContent(
+              content: message.content,
+              isStreaming: message.isStreaming,
+            ),
 
-          // Meta bar: copy, time, tokens
+          // Meta bar: copy, time, tokens, TTS
           _MessageMeta(message: message, onQuote: onQuote),
 
           // Error
           if (message.error != null)
             _ErrorCard(error: message.error!),
           if (message.isAborted == true)
-            _AbortCard(),
+            const _AbortCard(),
         ],
       ),
     );
@@ -110,28 +126,214 @@ class _BubbleContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = message.isFromUser;
+    final isHighlighted = message.isHighlighted == true;
+    final isCommand = message.isCommandMessage;
 
-    return Container(
+    Widget content = Container(
       constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: isUser ? const Color(0xFF543EBE) : const Color(0xFF343541),
+        color: isCommand
+            ? const Color(0xFF2A2A2A)
+            : (isUser ? const Color(0xFF543EBE) : const Color(0xFF343541)),
         borderRadius: BorderRadius.circular(16),
+        border: isHighlighted
+            ? Border.all(color: Colors.amber.withOpacity(0.5), width: 2)
+            : null,
+        boxShadow: isHighlighted
+            ? [BoxShadow(color: Colors.amber.withOpacity(0.2), blurRadius: 8)]
+            : null,
       ),
       child: message.content.isEmpty && message.isStreaming
           ? const _StreamingDots(size: 6)
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Flexible(
-                  child: isUser
-                      ? SelectableText(message.content, style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.5))
-                      : _MarkdownContent(content: message.content),
-                ),
+                // Command prefix
+                if (isCommand) ...[
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('/', style: TextStyle(color: Color(0xFF54A0FF), fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 4),
+                      Flexible(child: _buildContent(context)),
+                    ],
+                  ),
+                ] else
+                  _buildContent(context),
                 if (message.isStreaming) const _StreamingCursor(),
               ],
             ),
+    );
+
+    return content;
+  }
+
+  Widget _buildContent(BuildContext context) {
+    // Handle ContentBlock[] format
+    if (message.hasContentBlocks) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: message.contentBlocks!.map((block) {
+          switch (block.type) {
+            case ContentBlockType.image:
+              return _ImageBlock(block: block);
+            case ContentBlockType.file:
+              return _FileBlock(block: block);
+            case ContentBlockType.code:
+              return _MarkdownContent(content: '```${block.language ?? ''}\n${block.text ?? ''}\n```');
+            default:
+              return _MarkdownContent(content: block.text ?? '');
+          }
+        }).toList(),
+      );
+    }
+
+    // Handle attachments
+    if (message.hasAttachments) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ...message.attachments!.map((att) => _AttachmentWidget(attachment: att)),
+          if (message.content.isNotEmpty)
+            message.isFromUser
+                ? SelectableText(extractBodyWithoutThinking(message.content, isStreaming: message.isStreaming), style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.5))
+                : _MarkdownContent(content: extractBodyWithoutThinking(message.content, isStreaming: message.isStreaming)),
+        ],
+      );
+    }
+
+    // Default: plain text or markdown - strip thinking tags for display
+    final body = extractBodyWithoutThinking(message.content, isStreaming: message.isStreaming);
+    return message.isFromUser
+        ? SelectableText(body, style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.5))
+        : _MarkdownContent(content: body);
+  }
+}
+
+// --- Attachment Widget ---
+
+class _AttachmentWidget extends StatelessWidget {
+  final Attachment attachment;
+  const _AttachmentWidget({required this.attachment});
+
+  @override
+  Widget build(BuildContext context) {
+    if (attachment.isImage) {
+      return GestureDetector(
+        onTap: () => _showImagePreview(context, attachment.url ?? attachment.localPath ?? ''),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: attachment.localPath != null
+                ? Image.asset(attachment.localPath!, fit: BoxFit.cover)
+                : (attachment.url != null
+                    ? Image.network(attachment.url!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image))
+                    : const Icon(Icons.broken_image)),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.description_outlined, size: 16, color: Colors.grey[400]),
+          const SizedBox(width: 8),
+          Flexible(child: Text(attachment.name, style: TextStyle(color: Colors.grey[300], fontSize: 13))),
+          if (attachment.size != null) ...[
+            const SizedBox(width: 8),
+            Text(_formatSize(attachment.size!), style: TextStyle(color: Colors.grey[500], fontSize: 11)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showImagePreview(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        child: PhotoView(
+          imageProvider: url.startsWith('http')
+              ? NetworkImage(url)
+              : AssetImage(url) as ImageProvider,
+        ),
+      ),
+    );
+  }
+
+  String _formatSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+}
+
+// --- Image Block ---
+
+class _ImageBlock extends StatelessWidget {
+  final ContentBlock block;
+  const _ImageBlock({required this.block});
+
+  @override
+  Widget build(BuildContext context) {
+    if (block.url == null) return const SizedBox.shrink();
+    return GestureDetector(
+      onTap: () => _showImagePreview(context, block.url!),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(block.url!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image)),
+        ),
+      ),
+    );
+  }
+
+  void _showImagePreview(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        child: PhotoView(imageProvider: NetworkImage(url)),
+      ),
+    );
+  }
+}
+
+// --- File Block ---
+
+class _FileBlock extends StatelessWidget {
+  final ContentBlock block;
+  const _FileBlock({required this.block});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.description_outlined, size: 16, color: Colors.grey[400]),
+          const SizedBox(width: 8),
+          Flexible(child: Text(block.name ?? 'file', style: TextStyle(color: Colors.grey[300], fontSize: 13))),
+        ],
+      ),
     );
   }
 }
@@ -256,7 +458,13 @@ class _StreamingCursorState extends State<_StreamingCursor> with SingleTickerPro
 class _ThinkingBlock extends StatefulWidget {
   final String reasoning;
   final int? durationMs;
-  const _ThinkingBlock({required this.reasoning, this.durationMs});
+  final bool isStreaming;
+
+  const _ThinkingBlock({
+    required this.reasoning,
+    this.durationMs,
+    this.isStreaming = false,
+  });
 
   @override
   State<_ThinkingBlock> createState() => _ThinkingBlockState();
@@ -264,17 +472,65 @@ class _ThinkingBlock extends StatefulWidget {
 
 class _ThinkingBlockState extends State<_ThinkingBlock> {
   bool _expanded = false;
+  Timer? _timer;
+  int _elapsedSeconds = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isStreaming && widget.durationMs == null) {
+      _startTimer();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_ThinkingBlock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isStreaming && !oldWidget.isStreaming) {
+      _startTimer();
+    } else if (!widget.isStreaming && oldWidget.isStreaming) {
+      _stopTimer();
+    }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _elapsedSeconds = widget.durationMs != null ? (widget.durationMs! ~/ 1000) : 0;
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() => _elapsedSeconds++);
+      }
+    });
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   String _formatDuration(int ms) {
-    final s = (ms / 1000).round();
+    final s = ms ~/ 1000;
     if (s < 60) return '${s}s';
     return '${s ~/ 60}m ${s % 60}s';
+  }
+
+  String _getDisplayDuration() {
+    if (widget.durationMs != null && !widget.isStreaming) {
+      return _formatDuration(widget.durationMs!);
+    }
+    return _formatDuration(_elapsedSeconds * 1000);
   }
 
   @override
   Widget build(BuildContext context) {
     final charCount = widget.reasoning.length;
-    final durationStr = widget.durationMs != null && widget.durationMs! > 0 ? _formatDuration(widget.durationMs!) : null;
+    final durationStr = _getDisplayDuration();
 
     return Container(
       margin: const EdgeInsets.only(left: 48, top: 4),
@@ -291,16 +547,18 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.psychology_outlined, size: 14, color: Colors.purple[300]),
+                    const Text('💭', style: TextStyle(fontSize: 12)),
                     const SizedBox(width: 6),
                     Text(
                       _expanded ? '收起思考过程' : '思考过程',
                       style: TextStyle(color: Colors.grey[400], fontSize: 12, fontWeight: FontWeight.w500),
                     ),
-                    if (durationStr != null) ...[
+                    if (widget.isStreaming) ...[
                       const SizedBox(width: 6),
-                      Text('· $durationStr', style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+                      const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, valueColor: AlwaysStoppedAnimation(Colors.orange))),
                     ],
+                    const SizedBox(width: 6),
+                    Text('· $durationStr', style: TextStyle(color: Colors.grey[600], fontSize: 11)),
                     const SizedBox(width: 6),
                     Text('· $charCount 字符', style: TextStyle(color: Colors.grey[600], fontSize: 11)),
                     const Spacer(),
@@ -316,6 +574,94 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
                       border: Border(left: BorderSide(color: Colors.grey[700]!, width: 2)),
                     ),
                     child: _MarkdownContent(content: widget.reasoning),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// --- Thinking Content (inline tags) ---
+
+class _ThinkingContent extends StatefulWidget {
+  final String content;
+  final bool isStreaming;
+
+  const _ThinkingContent({required this.content, this.isStreaming = false});
+
+  @override
+  State<_ThinkingContent> createState() => _ThinkingContentState();
+}
+
+class _ThinkingContentState extends State<_ThinkingContent> {
+  bool _expanded = false;
+
+  String _extractThinkingText() {
+    final parsed = parseThinkingFromContent(widget.content, isStreaming: widget.isStreaming);
+    final parts = <String>[];
+    if (parsed.segments.isNotEmpty) {
+      parts.addAll(parsed.segments);
+    }
+    if (parsed.pending != null) {
+      parts.add(parsed.pending!);
+    }
+    return parts.join('\n\n');
+  }
+
+  int _getThinkingCharCount() {
+    final thinking = _extractThinkingText();
+    return thinking.codeUnits.length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final thinkingText = _extractThinkingText();
+    final charCount = _getThinkingCharCount();
+
+    return Container(
+      margin: const EdgeInsets.only(left: 48, top: 4),
+      child: Material(
+        color: const Color(0xFF1C1C1C),
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text('💭', style: TextStyle(fontSize: 12)),
+                    const SizedBox(width: 6),
+                    Text(
+                      _expanded ? '收起思考过程' : '思考过程',
+                      style: TextStyle(color: Colors.grey[400], fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
+                    if (widget.isStreaming) ...[
+                      const SizedBox(width: 6),
+                      const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, valueColor: AlwaysStoppedAnimation(Colors.orange))),
+                    ],
+                    const SizedBox(width: 6),
+                    Text('· $charCount 字符', style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+                    const Spacer(),
+                    Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 16, color: Colors.grey[600]),
+                  ],
+                ),
+                if (_expanded) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      border: Border(left: BorderSide(color: Colors.grey[700]!, width: 2)),
+                    ),
+                    child: _MarkdownContent(content: thinkingText),
                   ),
                 ],
               ],
@@ -472,27 +818,50 @@ class _JsonBlock extends StatelessWidget {
 
 // --- Message Meta ---
 
-class _MessageMeta extends StatelessWidget {
+class _MessageMeta extends ConsumerStatefulWidget {
   final Message message;
   final VoidCallback? onQuote;
   const _MessageMeta({required this.message, this.onQuote});
 
   @override
+  ConsumerState<_MessageMeta> createState() => _MessageMetaState();
+}
+
+class _MessageMetaState extends ConsumerState<_MessageMeta> {
+  @override
   Widget build(BuildContext context) {
-    final hasTokens = message.inputTokens != null || message.outputTokens != null;
-    final time = _formatTime(message.createdAt);
+    final hasTokens = widget.message.inputTokens != null || widget.message.outputTokens != null;
+    final time = _formatTime(widget.message.createdAt);
+
+    final ttsService = ref.watch(ttsServiceProvider);
+    final isTtsPlaying = ttsService.isPlaying && ttsService.currentMessageId == widget.message.id;
+    final isTtsPaused = ttsService.isPaused && ttsService.currentMessageId == widget.message.id;
+    final canPlayTts = !widget.message.isFromUser && widget.message.content.isNotEmpty;
 
     return Padding(
-      padding: EdgeInsets.only(left: message.isFromUser ? 0 : 48, right: message.isFromUser ? 48 : 0, top: 2),
+      padding: EdgeInsets.only(left: widget.message.isFromUser ? 0 : 48, right: widget.message.isFromUser ? 48 : 0, top: 2),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // TTS button (only for agent messages)
+          if (canPlayTts) ...[
+            _MetaButton(
+              icon: isTtsPlaying ? Icons.stop : (isTtsPaused ? Icons.play_arrow : Icons.volume_up),
+              size: 12,
+              color: isTtsPlaying ? Colors.red[300] : null,
+              onTap: () {
+                ref.read(ttsProvider.notifier).toggle(widget.message.content, widget.message.id);
+              },
+            ),
+            const SizedBox(width: 8),
+          ],
+
           // Copy button
           _MetaButton(
             icon: Icons.copy_outlined,
             size: 12,
             onTap: () {
-              Clipboard.setData(ClipboardData(text: message.content));
+              Clipboard.setData(ClipboardData(text: widget.message.content));
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)),
               );
@@ -500,7 +869,7 @@ class _MessageMeta extends StatelessWidget {
           ),
           if (hasTokens) ...[
             const SizedBox(width: 8),
-            Text('↑${message.inputTokens ?? 0} ↓${message.outputTokens ?? 0}', style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+            Text('↑${widget.message.inputTokens ?? 0} ↓${widget.message.outputTokens ?? 0}', style: TextStyle(fontSize: 10, color: Colors.grey[600])),
           ],
           const SizedBox(width: 8),
           Text(time, style: TextStyle(fontSize: 10, color: Colors.grey[600])),
@@ -510,16 +879,20 @@ class _MessageMeta extends StatelessWidget {
   }
 
   String _formatTime(int timestamp) {
-    final dt = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    final ms = timestamp > 1e12 ? timestamp : timestamp * 1000;
+    final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+    return '${dt.hour.toString().padLeft(2, '0')}:'
+           '${dt.minute.toString().padLeft(2, '0')}:'
+           '${dt.second.toString().padLeft(2, '0')}';
   }
 }
 
 class _MetaButton extends StatelessWidget {
   final IconData icon;
   final double size;
+  final Color? color;
   final VoidCallback onTap;
-  const _MetaButton({required this.icon, required this.size, required this.onTap});
+  const _MetaButton({required this.icon, required this.size, this.color, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -528,7 +901,7 @@ class _MetaButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(4),
       child: Padding(
         padding: const EdgeInsets.all(2),
-        child: Icon(icon, size: size, color: Colors.grey[500]),
+        child: Icon(icon, size: size, color: color ?? Colors.grey[500]),
       ),
     );
   }

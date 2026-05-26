@@ -98,3 +98,16 @@ Uses Flutter with Riverpod for state management, dio for HTTP, and go_router for
   - Bug fixes: reproduce the issue, verify the fix works, then commit.
   - New features: manual smoke-test the relevant flow end-to-end before pushing.
   - Never skip testing by claiming "it should work" — verify it actually does.
+
+- **每次代码修改后必须测试通过才能提交或推送。**
+  - 后端修改：验证语法并运行相关测试
+  - Flutter前端：对修改的文件运行 `flutter analyze`，修复所有错误和警告
+  - Bug修复：复现问题，验证修复有效后再提交
+  - 新功能：手动端到端测试相关流程
+  - 禁止跳过测试环节，必须实际验证功能正常
+
+- **每次完成代码修改后，必须执行以下步骤：**
+  1. 运行 `flutter build web` 确保编译通过
+  2. 运行 `bash restart-hermes-app.sh` 重启应用
+  3. 手动测试验证修改的功能正常工作
+  4. 确认没有引入新的问题

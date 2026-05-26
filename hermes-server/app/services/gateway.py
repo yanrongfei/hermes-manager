@@ -1,3 +1,4 @@
+import time
 from typing import List, Optional
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,7 +70,7 @@ class GatewayService:
             gateway.status = status
             if status == "online":
                 from datetime import datetime
-                gateway.last_seen = int(datetime.utcnow().timestamp())
+                gateway.last_seen = int(time.time())
             await self.db.commit()
 
     async def _count_profiles(self, gateway_id: str) -> int:

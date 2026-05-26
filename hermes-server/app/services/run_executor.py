@@ -144,6 +144,19 @@ class RunExecutor:
                 "inputTokens": usage.get("input_tokens", 0),
                 "outputTokens": usage.get("output_tokens", 0),
             })
+            # Persist the final message content to database
+            from app.database import get_session_maker
+            from app.services.message import MessageService
+            extra = {"reasoning_content": self._reasoning_content} if self._reasoning_content else None
+            session = get_session_maker()()
+            async with session:
+                msg_svc = MessageService(session)
+                await msg_svc.update_message(
+                    message_id=self.message_id,
+                    content=self._full_content,
+                    extra=json.dumps(extra) if extra else None,
+                    is_streaming=False,
+                )
 
         elif etype == "response.failed":
             error = event.get("error", {})

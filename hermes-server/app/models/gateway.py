@@ -1,3 +1,4 @@
+import time
 from sqlalchemy import Column, String, Integer, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -15,7 +16,7 @@ class Gateway(Base):
     api_key = Column(String, nullable=True)
     status = Column(String, default="unknown")
     last_seen = Column(Integer, nullable=True)
-    created_at = Column(Integer, default=lambda: int(datetime.utcnow().timestamp()))
+    created_at = Column(Integer, default=lambda: int(time.time()))
 
     user = relationship("User", back_populates="gateways")
     profiles = relationship("Profile", back_populates="gateway", cascade="all, delete-orphan")

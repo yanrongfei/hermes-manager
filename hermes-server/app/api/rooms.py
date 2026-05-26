@@ -1,3 +1,4 @@
+import time
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -5,7 +6,7 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.core.deps import get_current_user
 from app.core.errors import AppException, ErrorCode
-from app.schemas.room import RoomCreate, RoomUpdate, RoomResponse, RoomDetail, MemberResponse
+from app.schemas.room import RoomCreate, RoomUpdate, RoomResponse, RoomDetail, MemberResponse, RoomJoin
 from app.schemas.message import MessageListResponse
 from app.services.room import RoomService
 from app.models.message import Message
@@ -22,6 +23,10 @@ async def list_rooms(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    # Update user activity so online status reflects browsing
+    current_user.last_active_at = int(time.time())
+    await db.commit()
+
     service = RoomService(db)
     rooms = await service.get_user_rooms(current_user.id)
 
@@ -29,7 +34,7 @@ async def list_rooms(
     result = []
     for room in rooms:
         room_dict = RoomResponse.model_validate(room).model_dump()
-        stats = await service.get_room_stats(room.id)
+        stats = await service.get_room_stats(room.id, user_id=current_user.id)
         room_dict.update(stats)
         result.append(room_dict)
     return result
@@ -51,7 +56,10 @@ async def create_room(
         agent_ids=data.agent_ids if len(data.agent_ids) > 1 else None,
         agent_id=agent_id,
     )
-    return room
+    room_dict = RoomResponse.model_validate(room).model_dump()
+    stats = await service.get_room_stats(room.id, user_id=current_user.id)
+    room_dict.update(stats)
+    return room_dict
 
 
 @router.get("/{room_id}", response_model=RoomDetail)
@@ -67,7 +75,7 @@ async def get_room(
     if not await service.is_member(room_id, current_user.id):
         raise AppException(ErrorCode.RESOURCE_FORBIDDEN, "你不是该聊天室的成员", status_code=403)
     members = await service.get_room_members(room_id)
-    stats = await service.get_room_stats(room_id)
+    stats = await service.get_room_stats(room_id, user_id=current_user.id)
     return {
         **RoomResponse.model_validate(room).model_dump(),
         **stats,
@@ -98,14 +106,28 @@ async def update_room(
     return room
 
 
-@router.post("/join", response_model=RoomResponse)
-async def join_room_by_code(
-    invite_code: str,
+@router.delete("/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_room(
+    room_id: str,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     service = RoomService(db)
-    room = await service.join_by_code(invite_code, current_user.id)
+    if not await service.is_member(room_id, current_user.id):
+        raise AppException(ErrorCode.RESOURCE_FORBIDDEN, "你不是该聊天室的成员", status_code=403)
+    success = await service.delete_room(room_id, current_user.id)
+    if not success:
+        raise AppException(ErrorCode.RESOURCE_BAD_REQUEST, "无法删除聊天室", status_code=400)
+
+
+@router.post("/join", response_model=RoomResponse)
+async def join_room_by_code(
+    data: RoomJoin,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    service = RoomService(db)
+    room = await service.join_by_code(data.invite_code, current_user.id)
     if not room:
         raise AppException(ErrorCode.RESOURCE_NOT_FOUND, "邀请码无效或聊天室不存在", status_code=404)
     return room
@@ -201,3 +223,15 @@ async def generate_invite_code(
 
     invite_code = await service.generate_invite_code(room_id)
     return {"invite_code": invite_code}
+
+
+@router.post("/{room_id}/read", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_room_read(
+    room_id: str,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = RoomService(db)
+    if not await service.is_member(room_id, current_user.id):
+        raise AppException(ErrorCode.RESOURCE_FORBIDDEN, "你不是该聊天室的成员", status_code=403)
+    await service.mark_room_read(room_id, current_user.id)

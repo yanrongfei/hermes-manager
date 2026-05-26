@@ -1,7 +1,9 @@
+import time
 import asyncio
 import json
 import logging
 import re
+from datetime import datetime
 from typing import Dict, List, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,10 +13,25 @@ from app.core.security import decode_token
 from app.config import get_settings
 from app.services.room import RoomService
 from app.services.message import MessageService
+from app.schemas.message import MessageResponse
 from app.services.agent import AgentService
 from app.services.websocket import manager
 from app.services.gateway_channel import GatewayChannel
 from app.services.run_executor import RunExecutor
+from app.models.user import User as UserModel
+
+
+async def _update_user_active(user_id: str):
+    """Update user's last_active_at timestamp."""
+    now = int(time.time())
+    async with get_session_maker()() as session:
+        result = await session.execute(
+            select(UserModel).where(UserModel.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        if user:
+            user.last_active_at = now
+            await session.commit()
 
 settings = get_settings()
 
@@ -112,12 +129,15 @@ async def _cleanup_executor(room_id: str, message_id: str):
 
 async def _start_agent_runs(room_id: str, user_id: str, username: str, content: str):
     """Start agent runs based on room mode (broadcast/mention)."""
+    logger = logging.getLogger("hermes.ws")
+
     async with get_session_maker()() as session:
         room = await session.execute(
             select(Room).where(Room.id == room_id)
         )
         room = room.scalar_one_or_none()
     if not room:
+        logger.warning(f"_start_agent_runs: room {room_id} not found")
         return
 
     mentioned = _extract_mentions(content)
@@ -128,11 +148,16 @@ async def _start_agent_runs(room_id: str, user_id: str, username: str, content: 
         agent_svc = AgentService(session)
         room_agents = await agent_svc.get_room_agents(room_id)
 
-        # 1:1 chat: use profile_id directly when no agent record exists
-        if room.profile_id:
-            targets = [a for a in room_agents if a.profile_id == room.profile_id]
+        # Resolve agent identifier: profile_id > agent_id > room.name (fallback for legacy rooms)
+        agent_identifier = room.profile_id or room.agent_id
+        if not agent_identifier and not room_agents:
+            agent_identifier = room.name
+        logger.info(f"_start_agent_runs: room={room_id} mode={room.mode} identifier={agent_identifier} agents={len(room_agents)}")
+
+        if agent_identifier:
+            targets = [a for a in room_agents if a.profile_id == agent_identifier or a.name == agent_identifier]
             if not targets:
-                targets = None  # signal: use profile_id directly
+                targets = None  # signal: use identifier directly
         elif room.mode == "broadcast":
             targets = room_agents
         elif room.mode == "mention":
@@ -142,12 +167,13 @@ async def _start_agent_runs(room_id: str, user_id: str, username: str, content: 
 
         # No targets found
         if targets is not None and not targets:
+            logger.warning(f"_start_agent_runs: no targets for room {room_id}, mode={room.mode}, mentioned={mentioned}")
             return
 
         if targets is None:
-            # 1:1 chat with profile_id but no agent record — call gateway directly
-            agent_name = room.profile_id
-            agent_id = f"profile:{room.profile_id}"
+            # 1:1 chat with identifier but no agent record — call gateway directly
+            agent_name = agent_identifier
+            agent_id = f"profile:{agent_identifier}"
             description = ""
 
             msg_svc = MessageService(session)
@@ -171,6 +197,7 @@ async def _start_agent_runs(room_id: str, user_id: str, username: str, content: 
                 "isStreaming": True,
                 "createdAt": agent_msg.created_at,
             })
+            await _notify_room_updated(room_id, f"{agent_name} 正在思考...", agent_msg.created_at)
 
             executor = RunExecutor(
                 room_id=room_id,
@@ -206,6 +233,7 @@ async def _start_agent_runs(room_id: str, user_id: str, username: str, content: 
                     "isStreaming": True,
                     "createdAt": agent_msg.created_at,
                 })
+                await _notify_room_updated(room_id, f"{agent.name} 正在思考...", agent_msg.created_at)
 
                 executor = RunExecutor(
                     room_id=room_id,
@@ -235,11 +263,63 @@ async def _run_with_cleanup(executor: RunExecutor, content: str, history: list, 
         # Always cleanup, even if execute raises an exception
         await _cleanup_executor(executor.room_id, executor.message_id)
 
+        # Push final room_updated with actual agent response content
+        preview = (executor._full_content[:100]
+                   if executor._full_content else f"{executor.agent_name}")
+        await _notify_room_updated(
+            executor.room_id, preview,
+            int(time.time()),
+        )
+
 
 # Import Room at module level for type annotation
-from app.models.room import Room
+from app.models.room import Room, RoomMember
 
 router = APIRouter()
+
+
+async def _notify_room_updated(room_id: str, last_message: str = None, updated_at: int = None):
+    """Push room_updated event to all room members not actively in that room's WS."""
+    async with get_session_maker()() as session:
+        result = await session.execute(
+            select(RoomMember).where(RoomMember.room_id == room_id)
+        )
+        members = list(result.scalars().all())
+
+    active_users = manager.get_active_room_users(room_id)
+
+    for member in members:
+        if member.user_id not in active_users:
+            await manager.send_to_user(member.user_id, "room_updated", {
+                "roomId": room_id,
+                "lastMessage": last_message,
+                "updatedAt": updated_at,
+            })
+
+
+@router.websocket("/ws/notifications")
+async def websocket_notifications(
+    websocket: WebSocket,
+    token: str = Query(...),
+):
+    """Global notification WS — pushes room_updated events for all user's rooms."""
+    payload = decode_token(token)
+    if not payload or payload.get("type") != "access":
+        await websocket.close(code=4001)
+        return
+    user_id = payload.get("sub")
+
+    await websocket.accept()
+    await manager.connect_notification(websocket, user_id)
+
+    try:
+        # Keep connection alive; client pings, we just hold the socket
+        while True:
+            await websocket.receive_text()
+    except Exception:
+        pass
+    finally:
+        await manager.disconnect_notification(websocket, user_id)
 
 
 @router.websocket("/ws/chat")
@@ -287,6 +367,7 @@ async def websocket_chat(
             return
 
     await manager.connect(websocket, room_id, user_id)
+    await _update_user_active(user_id)
 
     # Notify room
     await manager.broadcast_to_room(
@@ -306,6 +387,8 @@ async def websocket_chat(
                 content = payload_data.get("content", "")
                 if not content or not content.strip():
                     continue
+
+                await _update_user_active(user_id)
 
                 # Create user message
                 async with get_session_maker()() as session:
@@ -333,6 +416,10 @@ async def websocket_chat(
                         }
                     )
 
+                # Notify non-active room members
+                preview = content[:100] if len(content) > 100 else content
+                await _notify_room_updated(room_id, preview, user_msg.created_at)
+
                 # Check if agents are busy
                 if room_id in active_executors and active_executors[room_id]:
                     # Queue the message
@@ -356,6 +443,21 @@ async def websocket_chat(
                     for executor in active_executors[room_id]:
                         executor.abort()
                     await manager.send_to_room(room_id, "abort.started", {})
+
+            elif event == "resume":
+                # Resume session: load history from database
+                async with get_session_maker()() as session:
+                    msg_svc = MessageService(session)
+                    messages, has_more = await msg_svc.get_messages(room_id, limit=100)
+                await websocket.send_json({
+                    "event": "resumed",
+                    "data": {
+                        "roomId": room_id,
+                        "messages": [MessageResponse.model_validate(m).model_dump() for m in messages],
+                        "isWorking": room_id in active_executors and bool(active_executors[room_id]),
+                        "queueLength": len(message_queues.get(room_id, [])),
+                    }
+                })
 
             elif event == "typing":
                 await manager.broadcast_to_room(

@@ -1,11 +1,14 @@
+import time
 import secrets
+from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.models.room import Room, RoomMember
 from app.models.agent import RoomAgent, Agent
 from app.models.message import Message
+from app.models.message_read import MessageRead
 from app.models.user import User
 
 class RoomService:
@@ -224,24 +227,32 @@ class RoomService:
         )
         return result.scalar_one_or_none()
 
-    async def get_room_stats(self, room_id: str) -> dict:
-        """Get room statistics including member count and running tasks."""
+    async def get_room_stats(self, room_id: str, user_id: str = None) -> dict:
+        """Get room statistics including member count, running tasks, and unread count."""
         # Member count
         members = await self.get_room_members(room_id)
         member_count = len(members)
 
-        # Online count (simplified - all members considered online for now)
-        online_count = member_count
+        # Online count: members with last_active_at within 5 minutes
+        now = int(time.time())
+        online_count = sum(
+            1 for m in members
+            if m.user and m.user.last_active_at and (now - m.user.last_active_at) < 300
+        )
 
         # Running tasks count (from ws.py active_executors)
         from app.api.ws import active_executors
         running_count = len(active_executors.get(room_id, []))
 
-        # Get last message preview
+        # Get last message preview (skip streaming/empty messages)
         result = await self.db.execute(
             select(Message)
-            .where(Message.room_id == room_id)
-            .order_by(Message.created_at.desc())
+            .where(
+                Message.room_id == room_id,
+                Message.is_streaming == False,
+                Message.content != "",
+            )
+            .order_by(Message.created_at.desc(), Message.id.desc())
             .limit(1)
         )
         last_message = None
@@ -249,7 +260,13 @@ class RoomService:
         msg = result.scalar_one_or_none()
         if msg:
             updated_at = msg.created_at
-            last_message = msg.content[:100] if msg.content and len(msg.content) > 100 else msg.content
+            raw = (msg.content or "").strip()
+            last_message = raw[:100] if len(raw) > 100 else raw
+
+        # Unread count
+        unread_count = 0
+        if user_id:
+            unread_count = await self.get_unread_count(room_id, user_id)
 
         return {
             "member_count": member_count,
@@ -258,6 +275,7 @@ class RoomService:
             "running_tasks_count": running_count,
             "last_message": last_message,
             "updated_at": updated_at,
+            "unread_count": unread_count,
         }
 
     async def generate_invite_code(self, room_id: str) -> Optional[str]:
@@ -275,3 +293,83 @@ class RoomService:
         await self.db.commit()
         await self.db.refresh(room)
         return invite_code
+
+    async def get_unread_count(self, room_id: str, user_id: str) -> int:
+        """Count unread messages for a user in a room."""
+        # Get last read record
+        result = await self.db.execute(
+            select(MessageRead).where(
+                and_(MessageRead.user_id == user_id, MessageRead.room_id == room_id)
+            )
+        )
+        read_record = result.scalar_one_or_none()
+
+        if read_record and read_record.last_read_at:
+            # Count messages newer than last_read_at, excluding user's own
+            count_result = await self.db.execute(
+                select(Message).where(
+                    and_(
+                        Message.room_id == room_id,
+                        Message.created_at > read_record.last_read_at,
+                        Message.sender_type == "agent",
+                    )
+                )
+            )
+            return len(list(count_result.scalars().all()))
+        else:
+            # No read record — count all agent messages
+            count_result = await self.db.execute(
+                select(Message).where(
+                    and_(
+                        Message.room_id == room_id,
+                        Message.sender_type == "agent",
+                    )
+                )
+            )
+            return len(list(count_result.scalars().all()))
+
+    async def mark_room_read(self, room_id: str, user_id: str) -> None:
+        """Mark a room as read by the user."""
+        now = int(time.time() * 1000)
+        result = await self.db.execute(
+            select(MessageRead).where(
+                and_(MessageRead.user_id == user_id, MessageRead.room_id == room_id)
+            )
+        )
+        read_record = result.scalar_one_or_none()
+
+        # Get latest message ID
+        msg_result = await self.db.execute(
+            select(Message)
+            .where(Message.room_id == room_id)
+            .order_by(Message.created_at.desc(), Message.id.desc())
+            .limit(1)
+        )
+        last_msg = msg_result.scalar_one_or_none()
+
+        if read_record:
+            read_record.last_read_at = now
+            read_record.last_read_message_id = last_msg.id if last_msg else None
+        else:
+            read_record = MessageRead(
+                user_id=user_id,
+                room_id=room_id,
+                last_read_message_id=last_msg.id if last_msg else None,
+                last_read_at=now,
+            )
+            self.db.add(read_record)
+        await self.db.commit()
+
+    async def delete_room(self, room_id: str, user_id: str) -> bool:
+        """Delete a room and all related data. Only owner can delete."""
+        room = await self.get_room(room_id)
+        if not room or room.owner_id != user_id:
+            return False
+
+        await self.db.execute(delete(RoomAgent).where(RoomAgent.room_id == room_id))
+        await self.db.execute(delete(MessageRead).where(MessageRead.room_id == room_id))
+        await self.db.execute(delete(Message).where(Message.room_id == room_id))
+        await self.db.execute(delete(RoomMember).where(RoomMember.room_id == room_id))
+        await self.db.delete(room)
+        await self.db.commit()
+        return True

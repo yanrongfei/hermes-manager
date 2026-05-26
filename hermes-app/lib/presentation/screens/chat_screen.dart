@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -32,6 +33,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _showMentionPicker = false;
   String _mentionQuery = '';
   bool _showScrollBottom = false;
+  bool _initialScrollDone = false;
 
   @override
   void initState() {
@@ -40,6 +42,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final show = _scrollController.hasClients &&
           _scrollController.position.maxScrollExtent - _scrollController.offset > 200;
       if (show != _showScrollBottom) setState(() => _showScrollBottom = show);
+    });
+
+    // Scroll to bottom on first load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint('[ChatScreen] initState postFrameCallback, messages: ${ref.read(chatProvider(widget.roomId)).messages.length}');
+      if (_scrollController.hasClients) {
+        final max = _scrollController.position.maxScrollExtent;
+        debugPrint('[ChatScreen] jumping to maxScrollExtent: $max');
+        _scrollController.jumpTo(max);
+      }
     });
 
     // Listen for agent_busy toast
@@ -77,6 +89,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   bool get _is1v1 => _currentRoom?.is1v1 ?? widget.roomName != null;
+
+  void _scrollToBottom() {
+    debugPrint('[ChatScreen] _scrollToBottom called, hasClients: ${_scrollController.hasClients}, initialScrollDone: $_initialScrollDone');
+    if (_scrollController.hasClients && !_initialScrollDone) {
+      _initialScrollDone = true;
+      final maxExtent = _scrollController.position.maxScrollExtent;
+      debugPrint('[ChatScreen] maxScrollExtent: $maxExtent');
+      _scrollController.animateTo(
+        maxExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
 
   void _sendMessage() {
     final content = _messageController.text.trim();
@@ -159,16 +185,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final hasRunningAgents = chatState.runningAgents.isNotEmpty;
     final isAborting = chatState.compressingStatus != null;
 
-    // Auto-scroll on new messages
+    // Auto-scroll to bottom on initial load (WebSocket resume)
     ref.listen(chatProvider(widget.roomId), (prev, next) {
-      if (next.messages.length > (prev?.messages.length ?? 0)) {
+      // Initial WebSocket resume complete - scroll to bottom
+      if (prev != null && !prev.initialLoadDone && next.initialLoadDone && next.messages.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              _scrollController.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-            );
+            _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+          }
+        });
+      }
+      // New message added - scroll to bottom
+      else if (next.messages.length > (prev?.messages.length ?? 0)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
           }
         });
       }
@@ -319,7 +350,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 maxLines: 5,
                 minLines: 1,
                 keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
+                textInputAction: TextInputAction.send,
                 style: const TextStyle(color: Color(0xFFECECEC)),
                 decoration: InputDecoration(
                   hintText: '输入消息...',
@@ -333,6 +364,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 ),
                 onChanged: _onTextChanged,
+                onSubmitted: (_) {
+                  debugPrint('TextField onSubmitted called');
+                  _sendMessage();
+                },
               ),
             ),
             const SizedBox(width: 4),

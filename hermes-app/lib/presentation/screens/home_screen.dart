@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/config/app_config.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../data/providers/notification_provider.dart';
+import '../../data/providers/room_provider.dart';
+import '../../data/providers/storage_provider.dart';
 import 'chat_list_tab.dart';
 import 'discover_tab.dart';
 import 'profile_tab.dart';
@@ -15,6 +19,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
+  bool _authChecked = false;
 
   final _tabs = const [
     ChatListTab(),
@@ -25,23 +30,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Check auth on mount
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final authState = ref.read(authProvider);
-      if (!authState.isAuthenticated) {
-        context.go('/login');
-      }
-    });
+    _initAuth();
+  }
+
+  Future<void> _initAuth() async {
+    // 1. Already in memory (navigated from splash after login)
+    if (ref.read(authProvider).isAuthenticated) {
+      if (mounted) setState(() => _authChecked = true);
+      return;
+    }
+
+    // 2. Check storage — token is the source of truth
+    final storage = ref.read(storageProvider);
+    final token = await storage.get(AppConfig.accessTokenKey);
+    if (token == null) {
+      // No token at all → must login
+      if (mounted) context.go('/login');
+      return;
+    }
+
+    // 3. Token exists → try to validate and load user info
+    //    If validation fails, still trust the token (could be network blip)
+    await ref.read(authProvider.notifier).checkAuth();
+
+    // 4. Regardless of API result, if we have a token we stay in the app
+    if (!mounted) return;
+    setState(() => _authChecked = true);
+
+    // 5. Connect notification WS for real-time room updates
+    ref.read(notificationProvider.notifier).connect();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Watch auth state - redirect if not authenticated
-    ref.listen<AuthState>(authProvider, (prev, next) {
-      if (!next.isAuthenticated) {
-        context.go('/login');
-      }
-    });
+    if (!_authChecked) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF212121),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       body: IndexedStack(
@@ -59,7 +86,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           backgroundColor: const Color(0xFF2A2A2A),
           indicatorColor: const Color(0xFF5856D6).withAlpha(50),
           selectedIndex: _currentIndex,
-          onDestinationSelected: (index) => setState(() => _currentIndex = index),
+          onDestinationSelected: (index) {
+            setState(() => _currentIndex = index);
+            ref.read(currentTabProvider.notifier).state = index;
+          },
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.chat_bubble_outline, color: Color(0xFFA0A0A0)),

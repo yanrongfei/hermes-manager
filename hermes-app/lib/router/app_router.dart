@@ -53,16 +53,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ModelsScreen(),
       ),
       GoRoute(
+        path: '/chat/create',
+        builder: (context, state) => const CreateSessionScreen(),
+      ),
+      GoRoute(
         path: '/chat/:roomId',
         builder: (context, state) {
           final roomId = state.pathParameters['roomId']!;
           final roomName = state.uri.queryParameters['name'];
           return ChatScreen(roomId: roomId, roomName: roomName);
         },
-      ),
-      GoRoute(
-        path: '/chat/create',
-        builder: (context, state) => const CreateSessionScreen(),
       ),
     ],
   );

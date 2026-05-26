@@ -34,6 +34,7 @@ class RoomResponse(BaseModel):
     updated_at: Optional[int] = None
     has_running_tasks: bool = False
     running_tasks_count: int = 0
+    unread_count: int = 0
 
     class Config:
         from_attributes = True

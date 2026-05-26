@@ -17,6 +17,7 @@ class Room {
   final int? updatedAt;
   final bool hasRunningTasks;
   final int runningTasksCount;
+  final int? unreadCount;
 
   Room({
     required this.id,
@@ -35,6 +36,7 @@ class Room {
     this.updatedAt,
     this.hasRunningTasks = false,
     this.runningTasksCount = 0,
+    this.unreadCount,
   });
 
   factory Room.fromJson(Map<String, dynamic> json) {
@@ -60,6 +62,7 @@ class Room {
       updatedAt: json['updated_at'] as int?,
       hasRunningTasks: json['has_running_tasks'] as bool? ?? false,
       runningTasksCount: json['running_tasks_count'] as int? ?? 0,
+      unreadCount: json['unread_count'] as int?,
     );
   }
 

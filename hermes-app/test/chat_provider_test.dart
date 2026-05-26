@@ -519,7 +519,7 @@ void main() {
         any(),
         data: {
           'name': 'New Room',
-          'agentIds': [],
+          'agent_ids': [],
           'mode': 'direct',
         },
       )).called(1);
@@ -553,7 +553,7 @@ void main() {
         any(),
         data: {
           'name': '1:1 Chat',
-          'agentIds': ['agent-profile-1'],
+          'agent_ids': ['agent-profile-1'],
           'mode': 'direct',
         },
       )).called(1);

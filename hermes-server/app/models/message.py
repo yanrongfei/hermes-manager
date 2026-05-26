@@ -1,3 +1,4 @@
+import time
 from sqlalchemy import Column, String, Integer, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -18,7 +19,7 @@ class Message(Base):
     parent_id = Column(String, nullable=True)  # for threading/pipeline
     is_streaming = Column(Boolean, default=False)  # 是否正在流式输出
     is_aborted = Column(Boolean, default=False)  # 是否被中止
-    created_at = Column(Integer, default=lambda: int(datetime.utcnow().timestamp()))
+    created_at = Column(Integer, default=lambda: int(time.time() * 1000))
 
     # Relationships
     room = relationship("Room", back_populates="messages")

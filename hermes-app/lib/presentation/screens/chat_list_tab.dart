@@ -1,27 +1,82 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/utils/time_utils.dart';
 import '../../data/providers/room_provider.dart';
 
-class ChatListTab extends ConsumerWidget {
+class ChatListTab extends ConsumerStatefulWidget {
   const ChatListTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatListTab> createState() => _ChatListTabState();
+}
+
+class _ChatListTabState extends ConsumerState<ChatListTab> with WidgetsBindingObserver {
+  int? _lastRefreshTrigger;
+  DateTime? _lastRefreshTime;
+
+  static const _refreshDebounce = Duration(seconds: 3);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestRefresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _requestRefresh();
+    }
+  }
+
+  void _requestRefresh() {
+    final now = DateTime.now();
+    if (_lastRefreshTime != null &&
+        now.difference(_lastRefreshTime!) < _refreshDebounce) {
+      return;
+    }
+    _lastRefreshTime = now;
+    ref.read(roomsProvider.notifier).loadRooms();
+  }
+
+  void _forceRefresh() {
+    _lastRefreshTime = DateTime.now();
+    ref.read(roomsProvider.notifier).loadRooms();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final refreshTrigger = ref.watch(roomRefreshTriggerProvider);
     final roomsAsync = ref.watch(roomsProvider);
+
+    // Detect return from chat room — force refresh, skip debounce
+    if (_lastRefreshTrigger != null && _lastRefreshTrigger != refreshTrigger) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _forceRefresh();
+      });
+    }
+    _lastRefreshTrigger = refreshTrigger;
 
     return Scaffold(
       backgroundColor: const Color(0xFF212121),
       body: SafeArea(
         child: Column(
           children: [
-            // Top bar with title and add button
             Container(
               color: const Color(0xFF2A2A2A),
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               child: Row(
                 children: [
-                  // Title centered
                   const Expanded(
                     child: Text(
                       'Hermes',
@@ -33,9 +88,8 @@ class ChatListTab extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  // Add button on right
                   GestureDetector(
-                    onTapDown: (details) => _showAddMenu(context, ref, details.globalPosition),
+                    onTapDown: (details) => _showAddMenu(context, details.globalPosition),
                     child: Container(
                       width: 28,
                       height: 28,
@@ -49,7 +103,6 @@ class ChatListTab extends ConsumerWidget {
                 ],
               ),
             ),
-            // Search bar
             Container(
               color: const Color(0xFF2A2A2A),
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -69,7 +122,6 @@ class ChatListTab extends ConsumerWidget {
                 ),
               ),
             ),
-            // Chat list
             Expanded(
               child: roomsAsync.when(
                 data: (rooms) {
@@ -94,15 +146,15 @@ class ChatListTab extends ConsumerWidget {
                     );
                   }
                   return Container(
-                    color: const Color(0xFF212121),
-                    child: ListView.builder(
-                      itemCount: rooms.length,
-                      itemBuilder: (context, index) {
-                        final room = rooms[index];
-                        return _ChatListItem(room: room);
-                      },
-                    ),
-                  );
+                      color: const Color(0xFF212121),
+                      child: ListView.builder(
+                        itemCount: rooms.length,
+                        itemBuilder: (context, index) {
+                          final room = rooms[index];
+                          return _ChatListItem(room: room);
+                        },
+                      ),
+                    );
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Center(
@@ -123,7 +175,7 @@ class ChatListTab extends ConsumerWidget {
     );
   }
 
-  void _showAddMenu(BuildContext context, WidgetRef ref, Offset globalPosition) {
+  void _showAddMenu(BuildContext context, Offset globalPosition) {
     showMenu(
       context: context,
       position: RelativeRect.fromLTRB(
@@ -143,7 +195,7 @@ class ChatListTab extends ConsumerWidget {
               const Text('新建对话', style: TextStyle(color: Color(0xFFECECEC))),
             ],
           ),
-          onTap: () => Future.microtask(() => _createNewConversation(context, ref)),
+          onTap: () => Future.microtask(() => context.push('/chat/create')),
         ),
         PopupMenuItem(
           child: Row(
@@ -163,17 +215,13 @@ class ChatListTab extends ConsumerWidget {
               const Text('加入群聊', style: TextStyle(color: Color(0xFFECECEC))),
             ],
           ),
-          onTap: () => Future.microtask(() => _showJoinRoomDialog(context, ref)),
+          onTap: () => Future.microtask(() => _showJoinRoomDialog(context)),
         ),
       ],
     );
   }
 
-  void _createNewConversation(BuildContext context, WidgetRef ref) async {
-    context.push('/chat/create');
-  }
-
-  void _showJoinRoomDialog(BuildContext context, WidgetRef ref) {
+  void _showJoinRoomDialog(BuildContext context) {
     final codeController = TextEditingController();
 
     showModalBottomSheet(
@@ -255,6 +303,11 @@ class _ChatListItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final timeStr = formatRelativeTime(room.updatedAt);
+    final hasUnread = (room.unreadCount ?? 0) > 0;
+    final isGroup = room.isGroup;
+    final memberCount = room.memberCount ?? 0;
+
     return Dismissible(
       key: Key(room.id),
       direction: DismissDirection.endToStart,
@@ -289,7 +342,13 @@ class _ChatListItem extends ConsumerWidget {
         ref.read(roomsProvider.notifier).deleteRoom(room.id);
       },
       child: InkWell(
-        onTap: () => context.push('/chat/${room.id}?name=${Uri.encodeComponent(room.name)}'),
+        onTap: () async {
+          if (hasUnread) {
+            ref.read(roomsProvider.notifier).markRoomRead(room.id);
+          }
+          await context.push('/chat/${room.id}?name=${Uri.encodeComponent(room.name)}');
+          ref.read(roomRefreshTriggerProvider.notifier).state++;
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: const BoxDecoration(
@@ -297,27 +356,43 @@ class _ChatListItem extends ConsumerWidget {
           ),
           child: Row(
             children: [
-              // Avatar
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF5856D6),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Center(
-                  child: Text(
-                    room.name.isNotEmpty ? room.name[0].toUpperCase() : 'G',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
+              Stack(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF5856D6),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: Text(
+                        room.name.isNotEmpty ? room.name[0].toUpperCase() : 'G',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  if (room.onlineCount > 0)
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF34C759),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFF212121), width: 2),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(width: 12),
-              // Content
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -337,13 +412,61 @@ class _ChatListItem extends ConsumerWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        Text(
-                          '刚刚',
-                          style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isGroup && memberCount > 0) ...[
+                              Icon(Icons.people_outline, size: 12, color: Colors.grey[500]),
+                              const SizedBox(width: 2),
+                              Text(
+                                '$memberCount',
+                                style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            Text(
+                              timeStr,
+                              style: TextStyle(
+                                color: hasUnread ? const Color(0xFF5856D6) : Colors.grey[500],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                     const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            (room.lastMessage ?? '').replaceAll('\n', ' ').trim(),
+                            style: TextStyle(
+                              color: hasUnread ? Colors.grey[400] : Colors.grey[600],
+                              fontSize: 13,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (hasUnread) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF5856D6),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            constraints: const BoxConstraints(minWidth: 18),
+                            child: Text(
+                              '${room.unreadCount}',
+                              style: const TextStyle(color: Colors.white, fontSize: 11),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
               ),

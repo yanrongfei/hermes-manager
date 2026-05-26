@@ -1,3 +1,4 @@
+import time
 """Sync profiles and agents from a Hermes Gateway."""
 
 from datetime import datetime
@@ -29,11 +30,11 @@ class GatewaySyncService:
                 return {"status": "offline", "profiles_synced": 0, "agents_synced": 0}
 
             gateway.status = "online"
-            gateway.last_seen = int(datetime.utcnow().timestamp())
+            gateway.last_seen = int(time.time())
 
             # Fetch agents from gateway — each model entry represents a profile+agent
             agents_data = await channel.list_agents()
-            now = int(datetime.utcnow().timestamp())
+            now = int(time.time())
 
             profiles_synced = 0
             agents_synced = 0

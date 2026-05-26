@@ -19,6 +19,9 @@ class ChatState {
   final int queueLength;
   final Map<String, int> thinkingStartedAt; // messageId -> timestamp ms
   final String? agentBusyMessage; // Agent busy toast message
+  final bool hasMore; // 是否有更多消息可加载
+  final bool isLoadingMore; // 是否正在加载更多
+  final bool initialLoadDone; // WebSocket resume 完成
 
   ChatState({
     this.messages = const [],
@@ -31,6 +34,9 @@ class ChatState {
     this.queueLength = 0,
     this.thinkingStartedAt = const {},
     this.agentBusyMessage,
+    this.hasMore = false,
+    this.isLoadingMore = false,
+    this.initialLoadDone = false,
   });
 
   ChatState copyWith({
@@ -44,6 +50,9 @@ class ChatState {
     int? queueLength,
     Map<String, int>? thinkingStartedAt,
     String? agentBusyMessage,
+    bool? hasMore,
+    bool? isLoadingMore,
+    bool? initialLoadDone,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -56,6 +65,9 @@ class ChatState {
       queueLength: queueLength ?? this.queueLength,
       thinkingStartedAt: thinkingStartedAt ?? this.thinkingStartedAt,
       agentBusyMessage: agentBusyMessage,
+      hasMore: hasMore ?? this.hasMore,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      initialLoadDone: initialLoadDone ?? this.initialLoadDone,
     );
   }
 }
@@ -71,7 +83,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   Future<void> _init() async {
-    await _loadHistory();
+    // Only use WebSocket resume for history - don't duplicate with HTTP
     await _connect();
   }
 
@@ -83,9 +95,34 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final data = response.data;
       final List msgs = data['messages'] ?? [];
       final messages = msgs.map((json) => Message.fromJson(json)).toList();
-      state = state.copyWith(messages: messages, isLoading: false);
+      // API returns oldest-first (backend does reverse), keep as-is: oldest at index 0, newest at end
+      state = state.copyWith(messages: messages, hasMore: data['has_more'] ?? false, isLoading: false);
     } catch (_) {
       state = state.copyWith(isLoading: false);
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (!state.hasMore || state.isLoadingMore) return;
+    state = state.copyWith(isLoadingMore: true);
+    try {
+      final oldestMsg = state.messages.first;  // oldest is at START
+      final dio = _ref.read(dioProvider);
+      final response = await dio.get('/rooms/$roomId/messages', queryParameters: {
+        'before': oldestMsg.createdAt,
+        'limit': 50,
+      });
+      final data = response.data;
+      final List msgs = data['messages'] ?? [];
+      final olderMessages = msgs.map((json) => Message.fromJson(json)).toList();
+      // Prepend older messages at the beginning (API returns oldest-first)
+      state = state.copyWith(
+        messages: [...olderMessages, ...state.messages],
+        hasMore: data['has_more'] ?? false,
+        isLoadingMore: false,
+      );
+    } catch (_) {
+      state = state.copyWith(isLoadingMore: false);
     }
   }
 
@@ -101,6 +138,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
       _channel!.sink.add(jsonEncode({
         'event': 'join',
+        'data': {'roomId': roomId},
+      }));
+
+      // Send resume after join to restore session state
+      _channel!.sink.add(jsonEncode({
+        'event': 'resume',
         'data': {'roomId': roomId},
       }));
 
@@ -147,6 +190,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final event = json['event'] as String;
       final payload = json['data'] as Map<String, dynamic>? ?? {};
 
+      debugPrint('[ChatNotifier] Received event: $event');
       switch (event) {
         case 'message':
           _handleNewMessage(payload);
@@ -155,6 +199,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
           _handleDelta(payload);
           break;
         case 'reasoning.delta':
+          _handleReasoningDelta(payload);
+          break;
+        case 'thinking.delta':
           _handleReasoningDelta(payload);
           break;
         case 'tool.started':
@@ -187,6 +234,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
         case 'queue_updated':
           state = state.copyWith(queueLength: payload['queueLength'] as int? ?? 0);
           break;
+        case 'resumed':
+          _handleResumed(payload);
+          break;
         case 'agent_busy':
           final agentName = payload['agentName'] as String? ?? 'Agent';
           state = state.copyWith(agentBusyMessage: '$agentName 正忙，请稍后再试');
@@ -209,7 +259,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     // Avoid duplicate if already in history
     if (state.messages.any((m) => m.id == msg.id)) return;
     state = state.copyWith(
-      messages: [...state.messages, msg],
+      messages: [...state.messages, msg],  // Add to end (newest at bottom)
       isConnected: true,
     );
   }
@@ -240,6 +290,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final delta = payload['delta'] as String? ?? '';
     final now = DateTime.now().millisecondsSinceEpoch;
 
+    debugPrint('[ChatNotifier] _handleReasoningDelta: messageId=$messageId, delta="$delta"');
+
     final thinking = Map<String, int>.from(state.thinkingStartedAt);
     if (!thinking.containsKey(messageId)) {
       thinking[messageId] = now;
@@ -247,7 +299,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
     final msgs = state.messages.map((m) {
       if (m.id == messageId) {
-        return m.copyWith(reasoning: (m.reasoning ?? '') + delta);
+        final newReasoning = (m.reasoning ?? '') + delta;
+        debugPrint('[ChatNotifier] Updated reasoning for $messageId: "$newReasoning"');
+        return m.copyWith(reasoning: newReasoning);
       }
       return m;
     }).toList();
@@ -359,12 +413,34 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(messages: msgs, runningAgents: running);
   }
 
-  void sendMessage(String content) {
-    if (_channel == null) return;
+  void _handleResumed(Map<String, dynamic> payload) {
+    final messagesData = payload['messages'] as List? ?? [];
+    final queueLength = payload['queueLength'] as int? ?? 0;
+
+    final historicalMessages = messagesData
+        .map((json) => Message.fromJson(json))
+        .toList();
+
+    // 避免重复：过滤掉已存在的消息
+    final existingIds = state.messages.map((m) => m.id).toSet();
+    final newHistorical = historicalMessages
+        .where((m) => !existingIds.contains(m.id))
+        .toList();
+
+    state = state.copyWith(
+      messages: [...newHistorical, ...state.messages],
+      queueLength: queueLength,
+      initialLoadDone: true,
+    );
+  }
+
+  bool sendMessage(String content) {
+    if (_channel == null) return false;
     _channel!.sink.add(jsonEncode({
       'event': 'message',
       'data': {'content': content},
     }));
+    return true;
   }
 
   void sendAbort() {
@@ -380,6 +456,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void sendStopTyping() {
     if (_channel == null) return;
     _channel!.sink.add(jsonEncode({'event': 'stop_typing'}));
+  }
+
+  void loadMore() {
+    _loadMore();
   }
 
   Future<void> updateRoomName(String name) async {
